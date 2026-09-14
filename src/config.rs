@@ -44,8 +44,8 @@ impl Config {
     ///
     /// # Errors
     ///
-    /// Returns an error when configured or requested tasks contain an invalid
-    /// duplicate or a requested task is not enabled.
+    /// Returns an error when configured tasks contain a duplicate or a
+    /// requested task is not enabled.
     pub fn select(&self, only: &[Task]) -> Result<Vec<Task>> {
         let configured = if self.tasks.is_empty() {
             DEFAULT_TASKS.to_vec()

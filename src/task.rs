@@ -38,6 +38,10 @@ pub enum Task {
 
 impl Task {
     /// Returns the executable associated with this task.
+    ///
+    /// # Returns
+    ///
+    /// The independent infrastructure binary that implements this task.
     pub(crate) fn executable(self) -> &'static str {
         match self {
             Self::Style => "rs-infra-style",
@@ -49,6 +53,10 @@ impl Task {
     }
 
     /// Returns the command argument sequences associated with this task.
+    ///
+    /// # Returns
+    ///
+    /// The ordered argument sequences passed to the task's executable.
     pub(crate) fn commands(self) -> &'static [&'static [&'static str]] {
         match self {
             Self::Style => &[&["check"]],

@@ -168,7 +168,8 @@ pub fn load_config(project: &Path) -> Result<Config> {
 /// # Parameters
 ///
 /// * `project` - The project root printed in the plan header.
-/// * `tasks` - Tasks whose commands should be printed.
+/// * `tasks` - Tasks whose commands should be printed; the vector is consumed
+///   in task order.
 ///
 /// # Errors
 ///
@@ -189,7 +190,12 @@ pub fn plan(project: &Path, tasks: Vec<Task>) -> Result<()> {
 /// # Parameters
 ///
 /// * `project` - The working directory passed to every task process.
-/// * `tasks` - Tasks to execute in order.
+/// * `tasks` - Tasks to execute in order; the vector is consumed as commands
+///   are launched.
+///
+/// Each command inherits the caller's standard input, output, and error
+/// streams. When `RS_INFRA_BIN_DIR` is set, task executables are resolved from
+/// that directory; otherwise they are resolved through the process `PATH`.
 ///
 /// # Errors
 ///
