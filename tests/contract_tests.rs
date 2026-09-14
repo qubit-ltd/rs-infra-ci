@@ -1,6 +1,18 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
+
 use std::fs;
 
-use qubit_infra_ci::{Config, Task, ToolSpec, jobs, load_tools};
+use qubit_infra_ci::Config;
+use qubit_infra_ci::Task;
+use qubit_infra_ci::ToolSpec;
+use qubit_infra_ci::jobs;
+use qubit_infra_ci::load_tools;
 use tempfile::tempdir;
 
 #[test]
@@ -50,6 +62,27 @@ package = "qubit-infra-dependency"
             "rs-infra-dependency",
         ]
     );
+}
+
+#[test]
+fn invalid_tool_revision_is_rejected() {
+    let project = tempdir().expect("temporary project");
+    fs::create_dir_all(project.path().join(".infra/ci")).expect("ci directory");
+    fs::write(
+        project.path().join(".infra/ci/tools.toml"),
+        "[rs-infra-style]\nrevision = \"not-a-sha\"\n",
+    )
+    .expect("tool configuration");
+
+    assert!(load_tools(project.path()).is_err());
+}
+
+#[test]
+fn duplicate_jobs_are_rejected() {
+    let error = jobs(&[Task::Style, Task::Style], &Default::default())
+        .expect_err("duplicate tasks must be rejected");
+
+    assert!(error.to_string().contains("configured more than once"));
 }
 
 #[test]
