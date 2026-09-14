@@ -25,6 +25,35 @@ cargo run --manifest-path /path/to/rs-infra-ci/Cargo.toml -- --help
 
 The project's `.infra` configuration remains the source of truth; this tool does not copy project configuration into the tool repository.
 
+## Workflow contract
+
+`.infra/ci.toml` selects the jobs that a migration script should run:
+
+```toml
+tasks = ["style", "verify", "coverage", "pages", "dependency"]
+```
+
+`verify` expands to lock validation followed by the build, test, documentation,
+and package suites. The other task names map to `rs-infra-style check`,
+`rs-infra-coverage check`, `rs-infra-pages build`, and
+`rs-infra-dependency check`.
+
+Migration scripts can run `rs-infra-ci --project . plan` to inspect the complete
+job plan. When `.infra/ci/tools.toml` is present, the plan also includes the
+revision-pinned installation command for every selected tool:
+
+```toml
+[rs-infra-style]
+source = "https://github.com/qubit-ltd/rs-infra-style.git"
+revision = "0123456789abcdef0123456789abcdef01234567"
+binary = "rs-infra-style"
+package = "qubit-infra-style"
+```
+
+Tool revisions must be full Git SHAs. Installation uses `cargo install --git`
+with `--rev` and `--locked`; rs-infra-ci invokes only the independent
+rs-infra-* binaries and has no dependency on the legacy rs-ci runtime.
+
 ## Capabilities and limitations
 
 This first release provides the focused behavior described above. It is intentionally a small building block: project-specific policy belongs in `.infra`, and orchestration belongs in `rs-infra-ci`. It does not promise compatibility with the legacy `rs-ci` scripts beyond the commands currently covered by tests.

@@ -25,6 +25,34 @@ cargo run --manifest-path /path/to/rs-infra-ci/Cargo.toml -- --help
 
 项目的 `.infra` 配置仍然是行为的唯一来源；工具仓库不会复制项目配置。具体策略由项目配置决定。
 
+## 工作流契约
+
+迁移脚本可以通过 `.infra/ci.toml` 选择要生成的任务：
+
+```toml
+tasks = ["style", "verify", "coverage", "pages", "dependency"]
+```
+
+`verify` 会展开为锁文件检查，以及 build、test、doc、package 四套验证。
+其余任务分别调用 `rs-infra-style check`、`rs-infra-coverage check`、
+`rs-infra-pages build` 和 `rs-infra-dependency check`。
+
+迁移脚本运行 `rs-infra-ci --project . plan` 可以查看完整 job 计划。
+存在 `.infra/ci/tools.toml` 时，计划还会输出每个选中工具的固定 revision
+安装命令：
+
+```toml
+[rs-infra-style]
+source = "https://github.com/qubit-ltd/rs-infra-style.git"
+revision = "0123456789abcdef0123456789abcdef01234567"
+binary = "rs-infra-style"
+package = "qubit-infra-style"
+```
+
+工具 revision 必须是完整 Git SHA。安装使用带 `--rev` 和 `--locked` 的
+`cargo install --git`；rs-infra-ci 只调用独立的 rs-infra-* 二进制，不依赖旧
+rs-ci 运行时。
+
 ## 能力与限制
 
 当前版本只提供上文列出的专门能力，刻意保持为小型基础设施组件：项目策略放在 `.infra`，任务编排交给 `rs-infra-ci`。对于旧版 `rs-ci` 脚本，只有测试覆盖的命令可视为兼容。
