@@ -1,0 +1,23 @@
+[package]
+name = "qubit-infra-ci"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "Apache-2.0"
+description = "Reusable Rust project CI task orchestrator"
+repository = "https://github.com/qubit-ltd/rs-infra-ci"
+homepage = "https://qubit-ltd.github.io/rs-infra-ci/"
+readme = "README.md"
+
+[[bin]]
+name = "rs-infra-ci"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
