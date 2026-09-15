@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "name": "all-features",
+      "commands": ["test"],
+      "allFeatures": true
+    }
+  ]
+}

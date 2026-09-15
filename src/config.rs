@@ -12,7 +12,17 @@ use serde::Deserialize;
 
 use crate::Task;
 
-const DEFAULT_TASKS: &[Task] = &[Task::Style, Task::Verify];
+const DEFAULT_TASKS: &[Task] = &[
+    Task::Style,
+    Task::Clippy,
+    Task::CoverageCfgClippy,
+    Task::Verify,
+    Task::FeatureMatrix,
+    Task::ProjectHook,
+    Task::Package,
+    Task::Coverage,
+    Task::Audit,
+];
 
 /// Project CI configuration containing the selected infrastructure tasks.
 ///
@@ -61,6 +71,7 @@ impl Config {
                 bail!("task '{task}' is not enabled in .infra/ci.toml");
             }
         }
+        validate_unique(only)?;
         Ok(only.to_vec())
     }
 }

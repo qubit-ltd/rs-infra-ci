@@ -11,6 +11,9 @@
 mod command_spec;
 mod config;
 mod job_spec;
+mod local;
+mod local_config;
+mod matrix;
 mod task;
 mod tool_config;
 mod tool_spec;

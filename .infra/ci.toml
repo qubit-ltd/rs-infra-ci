@@ -1,0 +1,8 @@
+# Bootstrap this tool with Cargo itself; preserve this repository's test/Clippy gates.
+tasks = ["feature-matrix", "clippy"]
+
+[local]
+coverage_cfg_clippy = false
+audit_cached_fallback = false
+matrix = ".infra/ci/cargo-matrix.json"
+hook = "project-ci-check.sh"

@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::collections::BTreeMap;
+
 /// One executable invocation in a generated CI job.
 ///
 /// # Examples
@@ -16,6 +18,7 @@
 /// let command = CommandSpec {
 ///     executable: "cargo".into(),
 ///     args: vec!["test".into()],
+///     env: Default::default(),
 /// };
 /// assert_eq!(command.args, ["test"]);
 /// ```
@@ -25,4 +28,6 @@ pub struct CommandSpec {
     pub executable: String,
     /// The command-line arguments passed to the executable, in order.
     pub args: Vec<String>,
+    /// Environment overrides scoped to this child process.
+    pub env: BTreeMap<String, String>,
 }

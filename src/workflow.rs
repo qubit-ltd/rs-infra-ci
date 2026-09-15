@@ -9,8 +9,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
-use std::process::Stdio;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -23,6 +21,8 @@ use crate::Task;
 use crate::ToolConfig;
 use crate::ToolSpec;
 use crate::config::validate_unique;
+use crate::local;
+use crate::local_config::LocalConfig;
 
 /// Loads revision-pinned tool specifications from a project.
 ///
@@ -68,7 +68,8 @@ pub fn load_tools(project: &Path) -> Result<ToolConfig> {
 ///
 /// # Returns
 ///
-/// A job specification for each selected task.
+/// A static job template for each selected task. Use `workflow` to expand
+/// project-specific matrices, hook paths, optional checks, and environment values.
 ///
 /// # Errors
 ///
@@ -89,6 +90,7 @@ pub fn jobs(tasks: &[Task], tools: &ToolConfig) -> Result<Vec<JobSpec>> {
                     .map(|args| CommandSpec {
                         executable: tool_name.to_owned(),
                         args: args.iter().map(|arg| (*arg).to_owned()).collect(),
+                        env: Default::default(),
                     })
                     .collect(),
                 tool,
@@ -112,7 +114,35 @@ pub fn jobs(tasks: &[Task], tools: &ToolConfig) -> Result<Vec<JobSpec>> {
 ///
 /// Propagates tool-file parsing, validation, and duplicate-task errors.
 pub fn workflow(project: &Path, tasks: &[Task]) -> Result<Vec<JobSpec>> {
-    jobs(tasks, &load_tools(project)?)
+    let project = project
+        .canonicalize()
+        .context("invalid project directory")?;
+    let config = LocalConfig::load(&project)?;
+    let mut jobs = jobs(tasks, &load_tools(&project)?)?;
+    for job in &mut jobs {
+        // An explicit package task determines its position; verify alone retains packaging.
+        if job.task == Task::Verify && tasks.contains(&Task::Package) {
+            job.commands
+                .retain(|command| command.args != ["run", "--suite", "package"]);
+        }
+        if let Some(commands) = local::commands(&project, job.task, &config)? {
+            job.commands = commands;
+        }
+        for command in &mut job.commands {
+            if command.executable.starts_with("rs-infra-") {
+                command.args.splice(
+                    0..0,
+                    ["--project".into(), project.to_string_lossy().into_owned()],
+                );
+                if let Some(toolchain) = &config.build_toolchain {
+                    command
+                        .env
+                        .insert("RUSTUP_TOOLCHAIN".into(), toolchain.clone());
+                }
+            }
+        }
+    }
+    Ok(jobs)
 }
 
 /// Prints a migration-friendly workflow plan, including tool installation data.
@@ -132,8 +162,16 @@ pub fn plan_workflow(project: &Path, tasks: &[Task]) -> Result<()> {
         if let Some(tool) = job.tool {
             println!("install: cargo {}", tool.install_args().join(" "));
         }
+        if job.commands.is_empty() {
+            println!("skip: {} is not configured", job.name);
+        }
         for command in job.commands {
-            println!("run: {} {}", command.executable, command.args.join(" "));
+            println!(
+                "run: {} {} env={:?}",
+                command.executable,
+                command.args.join(" "),
+                command.env
+            );
         }
     }
     Ok(())
@@ -173,16 +211,10 @@ pub fn load_config(project: &Path) -> Result<Config> {
 ///
 /// # Errors
 ///
-/// This function currently performs no fallible operation and always returns
-/// `Ok(())`.
+/// Returns an error for an invalid project path, malformed configuration, or
+/// invalid selected tasks. This is the same validated plan used by `run`.
 pub fn plan(project: &Path, tasks: Vec<Task>) -> Result<()> {
-    println!("project: {}", project.display());
-    for task in tasks {
-        for args in task.commands() {
-            println!("{task}: {} {}", task.executable(), args.join(" "));
-        }
-    }
-    Ok(())
+    plan_workflow(project, &tasks)
 }
 
 /// Executes the selected infrastructure commands in the project directory.
@@ -196,32 +228,39 @@ pub fn plan(project: &Path, tasks: Vec<Task>) -> Result<()> {
 /// Each command inherits the caller's standard input, output, and error
 /// streams. When `RS_INFRA_BIN_DIR` is set, task executables are resolved from
 /// that directory; otherwise they are resolved through the process `PATH`.
+/// Cargo and hooks use their own executable paths. Matrix dependency checks
+/// temporarily update Cargo.lock and restore it on normal success or failure.
+/// Audit may retry with cached data according to the local configuration.
 ///
 /// # Errors
 ///
 /// Returns an error when a task cannot start or exits unsuccessfully.
 pub fn run(project: &Path, tasks: Vec<Task>) -> Result<()> {
+    let project = project
+        .canonicalize()
+        .context("invalid project directory")?;
+    let config = LocalConfig::load(&project)?;
     let bin_dir = std::env::var_os("RS_INFRA_BIN_DIR").map(PathBuf::from);
-    for task in tasks {
-        let executable = bin_dir
-            .as_ref()
-            .map(|dir| dir.join(task.executable()))
-            .unwrap_or_else(|| PathBuf::from(task.executable()));
-        for args in task.commands() {
-            let mut command = Command::new(&executable);
-            command
-                .current_dir(project)
-                .arg("--project")
-                .arg(project)
-                .args(*args)
-                .stdin(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit());
-            let status = command.status().with_context(|| {
-                format!("failed to start task '{task}' ({})", executable.display())
-            })?;
-            if !status.success() {
-                bail!("task '{task}' failed with status {status}");
+    let jobs = workflow(&project, &tasks)?;
+    for job in jobs {
+        if job.commands.is_empty() {
+            println!("{}: not configured; skipping", job.name);
+            continue;
+        }
+        if job.task == Task::FeatureMatrix {
+            crate::matrix::run(&project, &config)?;
+            continue;
+        }
+        for mut spec in job.commands {
+            if spec.executable.starts_with("rs-infra-")
+                && let Some(dir) = &bin_dir
+            {
+                spec.executable = dir.join(&spec.executable).to_string_lossy().into_owned();
+            }
+            if job.task == Task::Audit {
+                local::audit(&project, &spec, &config)?;
+            } else {
+                local::execute(&project, &spec)?;
             }
         }
     }

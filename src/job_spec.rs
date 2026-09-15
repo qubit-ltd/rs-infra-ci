@@ -24,6 +24,7 @@ use crate::ToolSpec;
 ///     task: Task::Style,
 ///     commands: vec![CommandSpec {
 ///         executable: "rs-infra-style".into(),
+///         env: Default::default(),
 ///         args: vec!["check".into()],
 ///     }],
 ///     tool: None,

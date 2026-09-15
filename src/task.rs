@@ -26,9 +26,21 @@ use serde::Deserialize;
 pub enum Task {
     /// Checks source formatting and project style rules.
     Style,
-    /// Runs the project's build, test, documentation, and packaging checks.
+    /// Runs lock, build, test, documentation, and packaging checks.
     Verify,
-    /// Checks the project's coverage configuration.
+    /// Runs strict workspace Clippy checks.
+    Clippy,
+    /// Optionally repeats Clippy with coverage configuration enabled.
+    CoverageCfgClippy,
+    /// Executes the project's Cargo compatibility matrix.
+    FeatureMatrix,
+    /// Executes an optional project-owned hook.
+    ProjectHook,
+    /// Builds and verifies publishable packages through the verification tool.
+    Package,
+    /// Audits dependencies, with a configurable database-fetch fallback.
+    Audit,
+    /// Collects and checks the project's coverage.
     Coverage,
     /// Builds the project's documentation pages.
     Pages,
@@ -45,7 +57,9 @@ impl Task {
     pub(crate) fn executable(self) -> &'static str {
         match self {
             Self::Style => "rs-infra-style",
-            Self::Verify => "rs-infra-verify",
+            Self::Verify | Self::Package => "rs-infra-verify",
+            Self::Clippy | Self::CoverageCfgClippy | Self::FeatureMatrix | Self::Audit => "cargo",
+            Self::ProjectHook => "./project-ci-check.sh",
             Self::Coverage => "rs-infra-coverage",
             Self::Pages => "rs-infra-pages",
             Self::Dependency => "rs-infra-dependency",
@@ -67,7 +81,19 @@ impl Task {
                 &["run", "--suite", "doc"],
                 &["run", "--suite", "package"],
             ],
-            Self::Coverage => &[&["check"]],
+            Self::Package => &[&["run", "--suite", "package"]],
+            Self::Clippy | Self::CoverageCfgClippy => &[&[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ]],
+            Self::Audit => &[&["audit"]],
+            Self::FeatureMatrix | Self::ProjectHook => &[],
+            Self::Coverage => &[&["collect"]],
             Self::Pages => &[&["build"]],
             Self::Dependency => &[&["check"]],
         }
@@ -80,6 +106,12 @@ impl fmt::Display for Task {
         formatter.write_str(match self {
             Self::Style => "style",
             Self::Verify => "verify",
+            Self::Clippy => "clippy",
+            Self::CoverageCfgClippy => "coverage-cfg-clippy",
+            Self::FeatureMatrix => "feature-matrix",
+            Self::ProjectHook => "project-hook",
+            Self::Package => "package",
+            Self::Audit => "audit",
             Self::Coverage => "coverage",
             Self::Pages => "pages",
             Self::Dependency => "dependency",
