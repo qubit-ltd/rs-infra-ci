@@ -197,6 +197,44 @@ fn test_advanced_suites_prepare_tools_and_forward_suite_configuration() {
 }
 
 #[test]
+fn test_strict_docs_readme_and_release_build_keep_legacy_local_checks() {
+    let dir = fixture(
+        "tasks = ['verify', 'strict-doc', 'readme', 'release-build']\n[local]\nbuild_toolchain = '1.94.0'\n",
+    );
+    script(
+        &dir,
+        "rs-infra-verify",
+        "#!/bin/sh\nprintf '%s|%s|%s\\n' \"$*\" \"$RUSTUP_TOOLCHAIN\" \"$RUSTDOCFLAGS\" >> \"$PWD/verify-calls\"\n",
+    );
+
+    let output = run(&dir, "check");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
+    assert_eq!(
+        calls
+            .lines()
+            .filter(|line| line.starts_with("+1.94.0 build --release --verbose"))
+            .count(),
+        1
+    );
+    let verify_calls = fs::read_to_string(dir.path().join("verify-calls")).expect("verify calls");
+    assert!(verify_calls.contains("run --suite doc|1.94.0|-D warnings -D missing-docs"));
+    assert!(verify_calls.contains("run --suite readme|1.94.0|"));
+    assert_eq!(
+        verify_calls
+            .lines()
+            .filter(|line| line.contains("run --suite doc|"))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn test_fuzz_installs_configured_version_when_existing_version_differs() {
     let dir = fixture("tasks = ['fuzz']\n[local]\nfuzz_version = '0.13.2'\n");
     fs::write(dir.path().join("fuzz-wrong-version"), "").expect("old version marker");

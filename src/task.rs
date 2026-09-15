@@ -44,6 +44,12 @@ pub enum Task {
     Fuzz,
     /// Runs configured Loom model tests with the loom cfg enabled.
     Loom,
+    /// Builds strict rustdoc with warnings and missing documentation rejected.
+    StrictDoc,
+    /// Checks README dependency versions against workspace package versions.
+    Readme,
+    /// Builds the project in release mode with the configured build toolchain.
+    ReleaseBuild,
     /// Builds and verifies publishable packages through the verification tool.
     Package,
     /// Audits dependencies, with a configurable database-fetch fallback.
@@ -70,8 +76,14 @@ impl Task {
             | Self::Miri
             | Self::AddressSanitizer
             | Self::Fuzz
-            | Self::Loom => "rs-infra-verify",
-            Self::Clippy | Self::CoverageCfgClippy | Self::FeatureMatrix | Self::Audit => "cargo",
+            | Self::Loom
+            | Self::StrictDoc
+            | Self::Readme => "rs-infra-verify",
+            Self::Clippy
+            | Self::CoverageCfgClippy
+            | Self::FeatureMatrix
+            | Self::ReleaseBuild
+            | Self::Audit => "cargo",
             Self::ProjectHook => "./project-ci-check.sh",
             Self::Coverage => "rs-infra-coverage",
             Self::Pages => "rs-infra-pages",
@@ -109,6 +121,9 @@ impl Task {
             Self::AddressSanitizer => &[&["run", "--suite", "address-sanitizer"]],
             Self::Fuzz => &[&["run", "--suite", "fuzz"]],
             Self::Loom => &[&["run", "--suite", "loom"]],
+            Self::StrictDoc => &[&["run", "--suite", "doc"]],
+            Self::Readme => &[&["run", "--suite", "readme"]],
+            Self::ReleaseBuild => &[&["build", "--release", "--verbose"]],
             Self::FeatureMatrix | Self::ProjectHook => &[],
             Self::Coverage => &[&["collect"]],
             Self::Pages => &[&["build"]],
@@ -131,6 +146,9 @@ impl fmt::Display for Task {
             Self::AddressSanitizer => "address-sanitizer",
             Self::Fuzz => "fuzz",
             Self::Loom => "loom",
+            Self::StrictDoc => "strict-doc",
+            Self::Readme => "readme",
+            Self::ReleaseBuild => "release-build",
             Self::Package => "package",
             Self::Audit => "audit",
             Self::Coverage => "coverage",

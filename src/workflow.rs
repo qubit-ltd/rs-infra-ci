@@ -125,6 +125,10 @@ pub fn workflow(project: &Path, tasks: &[Task]) -> Result<Vec<JobSpec>> {
             job.commands
                 .retain(|command| command.args != ["run", "--suite", "package"]);
         }
+        if job.task == Task::Verify && tasks.contains(&Task::StrictDoc) {
+            job.commands
+                .retain(|command| command.args != ["run", "--suite", "doc"]);
+        }
         if let Some(commands) = local::commands(&project, job.task, &config)? {
             job.commands = commands;
         }

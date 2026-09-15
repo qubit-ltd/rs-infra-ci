@@ -114,6 +114,18 @@ pub(crate) fn commands(
         ],
         Task::Fuzz => vec![verify_fuzz(config)],
         Task::Loom => vec![verify_loom(config)],
+        Task::StrictDoc => {
+            let mut command = verify_suite("doc", config);
+            command
+                .env
+                .insert("RUSTDOCFLAGS".into(), "-D warnings -D missing-docs".into());
+            vec![command]
+        }
+        Task::Readme => vec![verify_suite("readme", config)],
+        Task::ReleaseBuild => vec![cargo(
+            config,
+            vec!["build".into(), "--release".into(), "--verbose".into()],
+        )],
         _ => return Ok(None),
     };
     Ok(Some(commands))
