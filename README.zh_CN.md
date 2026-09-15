@@ -54,6 +54,12 @@ coverage_cfg_clippy = false
 audit_cached_fallback = true
 matrix = ".infra/ci/cargo-matrix.json"
 hook = "project-ci-check.sh"
+# 项目启用相应配置时，将高级任务加入 `tasks`。
+nightly_toolchain = "nightly-2026-06-05"
+fuzz_mode = "smoke"
+fuzz_seconds_per_target = 10
+fuzz_max_len = 4096
+fuzz_version = "0.13.2"
 ```
 
 工具链配置可省略，省略时使用当前 Cargo 工具链；只配置 `build_toolchain` 时，
@@ -69,6 +75,10 @@ Clippy 也使用它。文件路径相对于项目根目录。未知的 `[local]`
 | `verify` | 依次调用 `rs-infra-verify lock check` 和 build、test、doc、package suite；若显式选择了 `package`，打包仅在该任务的位置执行 |
 | `feature-matrix` | 按配置文件顺序执行每个检查及其命令 |
 | `project-hook` | 在项目根目录运行指定的普通可执行文件；不存在则跳过，文件无效或非零退出则失败；Windows 使用 Bash |
+| `miri` | 安装指定 nightly 的 Miri/rust-src 组件，运行 `miri setup`，再执行已配置的 Miri suite |
+| `address-sanitizer` | 安装指定 nightly 的 rust-src 组件，再执行已配置的 AddressSanitizer suite |
+| `fuzz` | 确保安装固定版本 cargo-fuzz，再按配置的模式及限制运行 fuzz suite；`disabled` 会跳过安装和执行 |
+| `loom` | 使用 `RUSTFLAGS="--cfg loom"` 执行已配置的 release Loom 模型 |
 | `package` | `rs-infra-verify run --suite package` |
 | `coverage` | `rs-infra-coverage collect`，不再仅调用配置检查 `check` |
 | `audit` | `cargo audit`；仅识别到漏洞库获取错误时才允许用 `--no-fetch --stale` 重试一次；漏洞或重试失败均阻断 CI |
@@ -128,14 +138,15 @@ Rust API 的 `jobs()` 返回静态模板；`workflow()` 根据项目配置展开
 debug/release 构建、默认/all-feature 测试、条件 Miri/sanitizer/fuzz/Loom、
 严格文档、README 版本检查、feature matrix、项目 hook、package、coverage、audit。
 
-本次补齐真实矩阵执行、严格 Clippy、coverage cfg、项目 hook 和 audit 编排。
+本次补齐真实矩阵执行、严格 Clippy、coverage cfg、项目 hook、audit 及条件高级 suite 编排。
 已有显式 `verify` 调用仍保留打包检查。新的默认顺序先运行 style，并将矩阵和
 hook 放在独立的 package 任务之前。锁文件仍只校验，不执行旧脚本的自动同步。
 构建、测试、文档和打包的语义取决于安装的 `rs-infra-verify` revision，必须选择
-具备所需 release 构建、文档及实际打包验证能力的版本。此编排器尚未加入旧的
-条件高级验证和 README 版本检查，也不负责安装工具链、管理 Cargo home 或清理
-构建产物。这些能力需要在相应的独立工具或工作流中配置；编排器通过不能单独
-证明与旧 CI 完全等价。
+具备所需 release 构建、文档及实际打包验证能力的版本。条件 Miri、
+AddressSanitizer、fuzz 和 Loom 检查是可选任务；项目存在对应配置时，必须将
+任务加入 `.infra/ci.toml`。编排器会安装所需 nightly 组件和固定版本 cargo-fuzz。
+README 版本检查、Cargo home 管理和构建产物清理仍需由相应工具或工作流负责。
+除非项目启用了全部必需任务，编排器通过不能单独证明与旧 CI 完全等价。
 
 本仓库的 `./ci-check.sh` 通过自身二进制和已提交的 `.infra` 配置执行，
 保留原有 all-feature 测试与严格 Clippy 门禁，无须另外安装基础设施工具。

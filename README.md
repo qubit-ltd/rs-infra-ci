@@ -56,6 +56,12 @@ coverage_cfg_clippy = false
 audit_cached_fallback = true
 matrix = ".infra/ci/cargo-matrix.json"
 hook = "project-ci-check.sh"
+# Add configured suites to `tasks` when the project opts in to them.
+nightly_toolchain = "nightly-2026-06-05"
+fuzz_mode = "smoke"
+fuzz_seconds_per_target = 10
+fuzz_max_len = 4096
+fuzz_version = "0.13.2"
 ```
 
 The toolchain keys are optional: omission uses the active Cargo toolchain.
@@ -72,6 +78,10 @@ configuration fail before execution. Options come from `.infra`, not legacy
 | `verify` | `rs-infra-verify lock check`, then build, test, doc and package suites; when `package` is explicitly selected, packaging runs only at that task's position |
 | `feature-matrix` | Execute each configured check and each command in file order |
 | `project-hook` | Run the configured regular, executable file from the project root; absence skips, invalid files or nonzero exit fail; Windows uses Bash |
+| `miri` | Install the configured nightly Miri/rust-src components, run `miri setup`, then execute the configured Miri suite |
+| `address-sanitizer` | Install the configured nightly rust-src component, then execute the configured AddressSanitizer suite |
+| `fuzz` | Ensure the pinned cargo-fuzz version, then run the configured fuzz suite with the selected mode and smoke limits; `disabled` skips installation and execution |
+| `loom` | Run configured release Loom models with `RUSTFLAGS="--cfg loom"` |
 | `package` | `rs-infra-verify run --suite package` |
 | `coverage` | `rs-infra-coverage collect`, rather than configuration-only `check` |
 | `audit` | `cargo audit`; only recognized database-fetch failures may retry once with `--no-fetch --stale`; vulnerability and retry failures stop CI |
@@ -139,17 +149,20 @@ conditional Miri/sanitizer/fuzz/Loom, strict docs, README version checks,
 feature matrix, project hook, package, coverage, and audit, in that order.
 
 This change restores real matrix execution, strict Clippy, coverage cfg,
-project hooks and audit inside the generic orchestrator. Packaging remains
+project hooks, audit, and conditional advanced suite execution inside the generic orchestrator. Packaging remains
 available to existing explicit `verify` callers. The new default sequence
 puts style first and keeps matrix/hook before the explicit package task.
 Lock validation remains read-only instead of the old automatic lock sync.
 Build/test/doc/package semantics depend on the installed `rs-infra-verify`
 revision: select one that supplies the required release-build, documentation,
-and actual-package-build guarantees. This orchestrator does not add the old
-conditional advanced suites or README version checks, install toolchains,
-manage Cargo home, or clean build artifacts. These remaining capabilities
-must be configured in the appropriate independent tools/workflows; a passing
-orchestrator run alone does not establish full legacy CI parity.
+and actual-package-build guarantees. Conditional Miri, AddressSanitizer, fuzz,
+and Loom checks are opt-in tasks and must be included in `.infra/ci.toml` when
+the project has corresponding configuration. The orchestrator installs the
+required nightly components and pinned cargo-fuzz version. README version
+checks, Cargo home management, and build-artifact cleanup remain outside this
+tool; configure them in the appropriate independent tools/workflows. A passing
+orchestrator run alone does not establish full legacy CI parity unless the
+project enables all of its required tasks.
 
 This repository bootstraps `./ci-check.sh` through its own binary and checked-in
 `.infra` configuration, retaining its existing all-feature tests and strict
