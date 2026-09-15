@@ -12,7 +12,7 @@ Orchestrate independent Rust infrastructure tools from a project-local CI config
 ## Installation
 
 ```bash
-cargo install --git https://github.com/qubit-ltd/rs-infra-ci.git --tag v0.1.0 qubit-infra-ci
+cargo install --git https://github.com/qubit-ltd/rs-infra-ci.git --locked qubit-infra-ci
 ```
 
 ## Quick Start
@@ -27,16 +27,84 @@ The project's `.infra` configuration remains the source of truth; this tool does
 
 ## Workflow contract
 
-`.infra/ci.toml` selects the jobs that a migration script should run:
+For a crate that must test minimal features and run its own integration hook,
+use the same command locally and in GitHub Actions:
 
-```toml
-tasks = ["style", "verify", "coverage", "pages", "dependency"]
+```bash
+rs-infra-ci --project /path/to/project plan
+rs-infra-ci --project /path/to/project check
 ```
 
-`verify` expands to lock validation followed by the build, test, documentation,
-and package suites. The other task names map to `rs-infra-style check`,
-`rs-infra-coverage check`, `rs-infra-pages build`, and
-`rs-infra-dependency check`.
+Without an explicit task list, checks run in this order:
+`style`, `clippy`, `coverage-cfg-clippy`, `verify`, `feature-matrix`,
+`project-hook`, `package`, `coverage`, `audit`. A failure stops subsequent tasks.
+Missing matrices/hooks and disabled coverage-configured Clippy are reported as
+skipped. An explicit list replaces the defaults; `--only` selects enabled tasks
+in the requested order.
+
+Configure the consumer project's `.infra/ci.toml`:
+
+```toml
+tasks = ["style", "clippy", "coverage-cfg-clippy", "verify", "feature-matrix",
+         "project-hook", "package", "coverage", "audit"]
+
+[local]
+build_toolchain = "1.94.0"
+clippy_toolchain = "nightly-2026-06-05"
+coverage_cfg_clippy = false
+# Set false when CI must use current advisory data without a cached fallback.
+audit_cached_fallback = true
+matrix = ".infra/ci/cargo-matrix.json"
+hook = "project-ci-check.sh"
+```
+
+The toolchain keys are optional: omission uses the active Cargo toolchain.
+Clippy falls back to `build_toolchain` when only that key is specified.
+Paths are relative to the project root. Unknown `[local]` keys and invalid
+configuration fail before execution. Options come from `.infra`, not legacy
+`RS_CI_*` or `RUN_COVERAGE_CFG_CLIPPY` variables.
+
+| Task | Executed behavior |
+| --- | --- |
+| `style` | `rs-infra-style check` |
+| `clippy` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` |
+| `coverage-cfg-clippy` | The same Clippy invocation with child-only `RUSTFLAGS="--cfg coverage"`; disabled by default; inherited `CARGO_ENCODED_RUSTFLAGS` is removed for that child |
+| `verify` | `rs-infra-verify lock check`, then build, test, doc and package suites; when `package` is explicitly selected, packaging runs only at that task's position |
+| `feature-matrix` | Execute each configured check and each command in file order |
+| `project-hook` | Run the configured regular, executable file from the project root; absence skips, invalid files or nonzero exit fail; Windows uses Bash |
+| `package` | `rs-infra-verify run --suite package` |
+| `coverage` | `rs-infra-coverage collect`, rather than configuration-only `check` |
+| `audit` | `cargo audit`; only recognized database-fetch failures may retry once with `--no-fetch --stale`; vulnerability and retry failures stop CI |
+| `pages` / `dependency` | Explicit opt-ins: `rs-infra-pages build` / `rs-infra-dependency check` |
+
+Use `.infra/ci/cargo-matrix.json` for feature and dependency compatibility:
+
+```json
+{
+  "version": 1,
+  "checks": [
+    {"name": "minimal", "commands": ["check", "test", "clippy"], "defaultFeatures": false},
+    {"name": "all", "commands": ["test", "doc", "doc-test"], "allFeatures": true}
+  ]
+}
+```
+
+Supported commands are `check`, `build`, `test`, `doc`, `doc-test`, and `clippy`.
+`features` selects named features; `packages` selects workspace packages and
+must be nonempty if present. Without `packages`, checks use `--workspace`.
+`allFeatures` cannot be combined with named features or `defaultFeatures: false`.
+Matrix Clippy uses `--all-targets -- -D warnings`; matrix docs use
+`RUSTDOCFLAGS="-D warnings"`; doctests use `cargo test --doc`.
+
+A check may set `"dependency": {"name": "example", "resolution": "precise",
+"version": "1.2.3"}` or `"dependency": {"name": "example", "resolution": "latest"}`.
+The runner updates that dependency, verifies exactly one resolved version
+(and an exact match for `precise`), then runs the check with `--locked`.
+It restores the original Cargo.lock after each dependency check, including
+command failure, and removes a newly generated lockfile if none existed.
+Each check uses `target/infra-feature-matrix/<name>` for isolated artifacts.
+Abrupt process termination can prevent restoration; do not run concurrent
+lockfile writers in the same project.
 
 Migration scripts can run `rs-infra-ci --project . plan` to inspect the complete
 job plan. When `.infra/ci/tools.toml` is present, the plan also includes the
@@ -51,12 +119,41 @@ package = "qubit-infra-style"
 ```
 
 Tool revisions must be full Git SHAs. Installation uses `cargo install --git`
-with `--rev` and `--locked`; rs-infra-ci invokes only the independent
-rs-infra-* binaries and has no dependency on the legacy rs-ci runtime.
+with `--rev` and `--locked`; rs-infra-ci invokes independent rs-infra-* binaries, Cargo, and project-owned
+hooks without loading the legacy rs-ci runtime. `RS_INFRA_BIN_DIR` locates only
+infrastructure binaries; Cargo is resolved through PATH. Install Cargo,
+Clippy, cargo-audit, the selected infrastructure binaries, and the coverage
+tool's prerequisites before running the full default pipeline. This command
+prints installation plans but does not install tools automatically.
+
+The Rust API `jobs()` returns static templates; `workflow()` expands the
+project configuration into the same commands used by `plan` and `check`.
+`CommandSpec.env` contains child-process environment overrides.
 
 ## Capabilities and limitations
 
-This first release provides the focused behavior described above. It is intentionally a small building block: project-specific policy belongs in `.infra`, and orchestration belongs in `rs-infra-ci`. It does not promise compatibility with the legacy `rs-ci` scripts beyond the commands currently covered by tests.
+The audited legacy script at revision `ac84c7b4a439f703a6dee46faec805105ab5d714`
+ran lock synchronization, formatting/Clippy (optional
+coverage cfg), style, debug/release builds, default/all-feature tests,
+conditional Miri/sanitizer/fuzz/Loom, strict docs, README version checks,
+feature matrix, project hook, package, coverage, and audit, in that order.
+
+This change restores real matrix execution, strict Clippy, coverage cfg,
+project hooks and audit inside the generic orchestrator. Packaging remains
+available to existing explicit `verify` callers. The new default sequence
+puts style first and keeps matrix/hook before the explicit package task.
+Lock validation remains read-only instead of the old automatic lock sync.
+Build/test/doc/package semantics depend on the installed `rs-infra-verify`
+revision: select one that supplies the required release-build, documentation,
+and actual-package-build guarantees. This orchestrator does not add the old
+conditional advanced suites or README version checks, install toolchains,
+manage Cargo home, or clean build artifacts. These remaining capabilities
+must be configured in the appropriate independent tools/workflows; a passing
+orchestrator run alone does not establish full legacy CI parity.
+
+This repository bootstraps `./ci-check.sh` through its own binary and checked-in
+`.infra` configuration, retaining its existing all-feature tests and strict
+Clippy gates without requiring separately installed infrastructure tools.
 
 ## Learn More
 
