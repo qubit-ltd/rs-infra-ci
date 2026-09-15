@@ -251,6 +251,9 @@ pub fn run(project: &Path, tasks: Vec<Task>) -> Result<()> {
             crate::matrix::run(&project, &config)?;
             continue;
         }
+        if job.task == Task::Fuzz {
+            local::ensure_fuzz(&project, &config)?;
+        }
         for mut spec in job.commands {
             if spec.executable.starts_with("rs-infra-")
                 && let Some(dir) = &bin_dir

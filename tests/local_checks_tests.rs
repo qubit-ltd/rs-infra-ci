@@ -20,6 +20,10 @@ if [ "$1" = audit ] && [ -f audit-network ]; then
   echo "couldn't fetch advisory database" >&2
   exit 1
 fi
+if [ "$1" = fuzz ] && [ "$2" = --version ]; then
+  if [ -f fuzz-wrong-version ]; then echo 'cargo-fuzz 0.12.0'; else echo 'cargo-fuzz 0.13.2'; fi
+  exit 0
+fi
 if [ "$1" = audit ] && [ -f audit-vulnerability ]; then exit 1; fi
 if [ "$1" = update ]; then printf changed > Cargo.lock; fi
 if [ "$1" = metadata ]; then echo '{"packages":[{"name":"dep","version":"1.2.3"}]}'; fi
@@ -156,6 +160,74 @@ fn test_disabled_coverage_cfg_and_missing_matrix_skip_without_commands() {
     let dir = fixture("tasks = ['coverage-cfg-clippy', 'feature-matrix']\n");
     assert!(run(&dir, "check").status.success());
     assert!(!dir.path().join("calls").exists());
+}
+
+#[test]
+fn test_advanced_suites_prepare_tools_and_forward_suite_configuration() {
+    let dir = fixture(
+        "tasks = ['miri', 'address-sanitizer', 'fuzz', 'loom']\n[local]\nnightly_toolchain = 'nightly-2026-06-05'\nfuzz_mode = 'build-only'\nfuzz_seconds_per_target = 17\nfuzz_max_len = 16384\nfuzz_version = '0.13.2'\n",
+    );
+    script(
+        &dir,
+        "rustup",
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$PWD/rustup-calls\"\n",
+    );
+    script(
+        &dir,
+        "rs-infra-verify",
+        "#!/bin/sh\nprintf '%s|%s|%s|%s|%s|%s\\n' \"$*\" \"$RS_INFRA_NIGHTLY_TOOLCHAIN\" \"$RS_INFRA_FUZZ_MODE\" \"$RS_INFRA_FUZZ_SECONDS_PER_TARGET\" \"$RS_INFRA_FUZZ_MAX_LEN\" \"$RUSTFLAGS\" >> \"$PWD/verify-calls\"\n",
+    );
+    let output = run(&dir, "check");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
+    assert!(calls.contains("fuzz --version"));
+    assert!(calls.contains("+nightly-2026-06-05 miri setup"));
+    let rustup_calls = fs::read_to_string(dir.path().join("rustup-calls")).expect("rustup calls");
+    assert!(rustup_calls.contains("toolchain install nightly-2026-06-05"));
+    let verify_calls = fs::read_to_string(dir.path().join("verify-calls")).expect("suite calls");
+    assert!(verify_calls.contains("--suite miri|nightly-2026-06-05||||"));
+    assert!(verify_calls.contains("--suite address-sanitizer|nightly-2026-06-05||||"));
+    assert!(verify_calls.contains("--suite fuzz|nightly-2026-06-05|build-only|17|16384"));
+    assert!(verify_calls.contains("--suite loom|nightly-2026-06-05||||--cfg loom"));
+    assert!(!calls.contains("install cargo-fuzz"));
+}
+
+#[test]
+fn test_fuzz_installs_configured_version_when_existing_version_differs() {
+    let dir = fixture("tasks = ['fuzz']\n[local]\nfuzz_version = '0.13.2'\n");
+    fs::write(dir.path().join("fuzz-wrong-version"), "").expect("old version marker");
+    script(&dir, "rs-infra-verify", "#!/bin/sh\nexit 0\n");
+    let output = run(&dir, "check");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
+    assert!(calls.contains("install cargo-fuzz --locked --version 0.13.2"));
+}
+
+#[test]
+fn test_disabled_fuzz_does_not_install_cargo_fuzz() {
+    let dir = fixture("tasks = ['fuzz']\n[local]\nfuzz_mode = 'disabled'\n");
+    script(
+        &dir,
+        "rs-infra-verify",
+        "#!/bin/sh\nprintf '%s|%s\\n' \"$*\" \"$RS_INFRA_FUZZ_MODE\" >> \"$PWD/verify-calls\"\n",
+    );
+    let output = run(&dir, "check");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!dir.path().join("calls").exists());
+    let verify_calls = fs::read_to_string(dir.path().join("verify-calls")).expect("suite calls");
+    assert!(verify_calls.contains("run --suite fuzz|disabled"));
 }
 
 #[test]

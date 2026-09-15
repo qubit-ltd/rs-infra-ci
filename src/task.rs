@@ -36,6 +36,14 @@ pub enum Task {
     FeatureMatrix,
     /// Executes an optional project-owned hook.
     ProjectHook,
+    /// Runs configured Miri tests after installing the pinned Miri toolchain.
+    Miri,
+    /// Runs configured AddressSanitizer checks after installing rust-src.
+    AddressSanitizer,
+    /// Runs configured fuzz targets using the configured fuzz mode.
+    Fuzz,
+    /// Runs configured Loom model tests with the loom cfg enabled.
+    Loom,
     /// Builds and verifies publishable packages through the verification tool.
     Package,
     /// Audits dependencies, with a configurable database-fetch fallback.
@@ -57,7 +65,12 @@ impl Task {
     pub(crate) fn executable(self) -> &'static str {
         match self {
             Self::Style => "rs-infra-style",
-            Self::Verify | Self::Package => "rs-infra-verify",
+            Self::Verify
+            | Self::Package
+            | Self::Miri
+            | Self::AddressSanitizer
+            | Self::Fuzz
+            | Self::Loom => "rs-infra-verify",
             Self::Clippy | Self::CoverageCfgClippy | Self::FeatureMatrix | Self::Audit => "cargo",
             Self::ProjectHook => "./project-ci-check.sh",
             Self::Coverage => "rs-infra-coverage",
@@ -92,6 +105,10 @@ impl Task {
                 "warnings",
             ]],
             Self::Audit => &[&["audit"]],
+            Self::Miri => &[&["run", "--suite", "miri"]],
+            Self::AddressSanitizer => &[&["run", "--suite", "address-sanitizer"]],
+            Self::Fuzz => &[&["run", "--suite", "fuzz"]],
+            Self::Loom => &[&["run", "--suite", "loom"]],
             Self::FeatureMatrix | Self::ProjectHook => &[],
             Self::Coverage => &[&["collect"]],
             Self::Pages => &[&["build"]],
@@ -110,6 +127,10 @@ impl fmt::Display for Task {
             Self::CoverageCfgClippy => "coverage-cfg-clippy",
             Self::FeatureMatrix => "feature-matrix",
             Self::ProjectHook => "project-hook",
+            Self::Miri => "miri",
+            Self::AddressSanitizer => "address-sanitizer",
+            Self::Fuzz => "fuzz",
+            Self::Loom => "loom",
             Self::Package => "package",
             Self::Audit => "audit",
             Self::Coverage => "coverage",
