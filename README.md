@@ -76,6 +76,9 @@ configuration fail before execution. Options come from `.infra`, not legacy
 | `clippy` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` |
 | `coverage-cfg-clippy` | The same Clippy invocation with child-only `RUSTFLAGS="--cfg coverage"`; disabled by default; inherited `CARGO_ENCODED_RUSTFLAGS` is removed for that child |
 | `verify` | `rs-infra-verify lock check`, then build, test, doc and package suites; when `package` is explicitly selected, packaging runs only at that task's position |
+| `strict-doc` | Runs the verifier doc suite with `RUSTDOCFLAGS="-D warnings -D missing-docs"`; replaces the ordinary doc suite inside `verify` when both are selected |
+| `readme` | `rs-infra-verify run --suite readme` |
+| `release-build` | `cargo build --release --verbose` using `build_toolchain` |
 | `feature-matrix` | Execute each configured check and each command in file order |
 | `project-hook` | Run the configured regular, executable file from the project root; absence skips, invalid files or nonzero exit fail; Windows uses Bash |
 | `miri` | Install the configured nightly Miri/rust-src components, run `miri setup`, then execute the configured Miri suite |
@@ -149,20 +152,22 @@ conditional Miri/sanitizer/fuzz/Loom, strict docs, README version checks,
 feature matrix, project hook, package, coverage, and audit, in that order.
 
 This change restores real matrix execution, strict Clippy, coverage cfg,
-project hooks, audit, and conditional advanced suite execution inside the generic orchestrator. Packaging remains
-available to existing explicit `verify` callers. The new default sequence
-puts style first and keeps matrix/hook before the explicit package task.
+strict documentation, README version checks, release builds, project hooks,
+audit, and conditional advanced suite execution inside the generic orchestrator.
+Packaging remains available to existing explicit `verify` callers. The new
+default sequence puts style first and keeps matrix/hook before the explicit
+package task.
 Lock validation remains read-only instead of the old automatic lock sync.
 Build/test/doc/package semantics depend on the installed `rs-infra-verify`
-revision: select one that supplies the required release-build, documentation,
-and actual-package-build guarantees. Conditional Miri, AddressSanitizer, fuzz,
+revision: select one that supplies the required documentation and actual-package-build guarantees.
+Conditional Miri, AddressSanitizer, fuzz,
 and Loom checks are opt-in tasks and must be included in `.infra/ci.toml` when
 the project has corresponding configuration. The orchestrator installs the
-required nightly components and pinned cargo-fuzz version. README version
-checks, Cargo home management, and build-artifact cleanup remain outside this
-tool; configure them in the appropriate independent tools/workflows. A passing
-orchestrator run alone does not establish full legacy CI parity unless the
-project enables all of its required tasks.
+required nightly components and pinned cargo-fuzz version. Cargo home
+management and build-artifact cleanup remain outside this tool; configure them
+in the appropriate independent tools/workflows. A passing orchestrator run
+alone does not establish full legacy CI parity unless the project enables all
+of its required tasks.
 
 This repository bootstraps `./ci-check.sh` through its own binary and checked-in
 `.infra` configuration, retaining its existing all-feature tests and strict
