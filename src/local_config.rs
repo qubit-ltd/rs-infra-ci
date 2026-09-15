@@ -8,11 +8,12 @@
 
 //! Project-owned options for local checks.
 
+use std::path::Path;
+
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 use serde::Deserialize;
-use std::path::Path;
 
 /// Local execution settings read from the `[local]` table in `.infra/ci.toml`.
 #[derive(Debug, Deserialize)]

@@ -8,18 +8,23 @@
 
 //! Planning and execution shared by local and CI callers.
 
-use crate::CommandSpec;
-use crate::Task;
-use crate::local_config::LocalConfig;
-use anyhow::Context;
-use anyhow::Result;
-use anyhow::bail;
 use std::path::Path;
 use std::process::Command;
 
+use anyhow::Context;
+use anyhow::Result;
+use anyhow::bail;
+
+use crate::CommandSpec;
+use crate::Task;
+use crate::local_config::LocalConfig;
+
 /// Builds a Cargo invocation using the configured build or Clippy toolchain.
+/// An explicit `+toolchain` argument takes precedence over configured defaults.
 pub(crate) fn cargo(config: &LocalConfig, args: Vec<String>) -> CommandSpec {
-    let toolchain = if args.first().is_some_and(|arg| arg == "clippy") {
+    let toolchain = if args.first().is_some_and(|arg| arg.starts_with('+')) {
+        None
+    } else if args.first().is_some_and(|arg| arg == "clippy") {
         config
             .clippy_toolchain
             .as_ref()

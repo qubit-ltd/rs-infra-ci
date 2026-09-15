@@ -3,11 +3,15 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
+use std::process::Output;
+
+use qubit_infra_ci::Config;
 use tempfile::TempDir;
+use tempfile::tempdir;
 
 /// Creates executable process fixtures without changing the test process environment.
 fn fixture(config: &str) -> TempDir {
-    let dir = tempfile::tempdir().expect("fixture");
+    let dir = tempdir().expect("fixture");
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("configuration directory");
     fs::write(dir.path().join(".infra/ci.toml"), config).expect("configuration");
     script(
@@ -41,7 +45,7 @@ fn script(dir: &TempDir, name: &str, text: &str) {
 }
 
 /// Runs the real CLI with fixture executables and captures its result.
-fn run(dir: &TempDir, operation: &str) -> std::process::Output {
+fn run(dir: &TempDir, operation: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
         .args(["--project", dir.path().to_str().expect("path"), operation])
         .env(
@@ -165,7 +169,7 @@ fn test_disabled_coverage_cfg_and_missing_matrix_skip_without_commands() {
 #[test]
 fn test_advanced_suites_prepare_tools_and_forward_suite_configuration() {
     let dir = fixture(
-        "tasks = ['miri', 'address-sanitizer', 'fuzz', 'loom']\n[local]\nnightly_toolchain = 'nightly-2026-06-05'\nfuzz_mode = 'build-only'\nfuzz_seconds_per_target = 17\nfuzz_max_len = 16384\nfuzz_version = '0.13.2'\n",
+        "tasks = ['miri', 'address-sanitizer', 'fuzz', 'loom']\n[local]\nbuild_toolchain = '1.94.0'\nnightly_toolchain = 'nightly-2026-06-05'\nfuzz_mode = 'build-only'\nfuzz_seconds_per_target = 17\nfuzz_max_len = 16384\nfuzz_version = '0.13.2'\n",
     );
     script(
         &dir,
@@ -186,6 +190,7 @@ fn test_advanced_suites_prepare_tools_and_forward_suite_configuration() {
     let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
     assert!(calls.contains("fuzz --version"));
     assert!(calls.contains("+nightly-2026-06-05 miri setup"));
+    assert!(!calls.contains("+1.94.0 +nightly-2026-06-05 miri setup"));
     let rustup_calls = fs::read_to_string(dir.path().join("rustup-calls")).expect("rustup calls");
     assert!(rustup_calls.contains("toolchain install nightly-2026-06-05"));
     let verify_calls = fs::read_to_string(dir.path().join("verify-calls")).expect("suite calls");
@@ -374,9 +379,7 @@ fn test_plan_and_check_include_the_same_matrix_commands_without_plan_side_effect
 
 #[test]
 fn test_default_tasks_place_matrix_and_hook_before_package_and_audit_last() {
-    let tasks = qubit_infra_ci::Config::default()
-        .select(&[])
-        .expect("default tasks");
+    let tasks = Config::default().select(&[]).expect("default tasks");
     let names: Vec<_> = tasks.iter().map(ToString::to_string).collect();
     assert_eq!(
         names,

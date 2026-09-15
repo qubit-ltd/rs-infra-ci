@@ -8,15 +8,18 @@
 
 //! Cargo compatibility matrices with isolated artifacts and restored lockfiles.
 
-use crate::CommandSpec;
-use crate::local;
-use crate::local_config::LocalConfig;
+use std::collections::BTreeSet;
+use std::path::Path;
+
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 use serde_json::Value;
-use std::collections::BTreeSet;
-use std::path::Path;
+use serde_json::from_slice;
+
+use crate::CommandSpec;
+use crate::local;
+use crate::local_config::LocalConfig;
 
 /// Reads and validates the complete matrix before any command can mutate the project.
 fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
@@ -24,7 +27,7 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
     if !path.try_exists()? {
         return Ok(Vec::new());
     }
-    let document: Value = serde_json::from_slice(&std::fs::read(&path)?)
+    let document: Value = from_slice(&std::fs::read(&path)?)
         .with_context(|| format!("invalid matrix {}", path.display()))?;
     if document["version"] != 1 {
         bail!("matrix version must be 1");
@@ -257,7 +260,7 @@ pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
                             String::from_utf8_lossy(&output.stderr)
                         );
                     }
-                    let metadata: Value = serde_json::from_slice(&output.stdout)?;
+                    let metadata: Value = from_slice(&output.stdout)?;
                     let dependency = dependency.context("dependency configuration")?;
                     let versions: BTreeSet<_> = metadata["packages"]
                         .as_array()
