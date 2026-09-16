@@ -396,6 +396,7 @@ fn test_default_tasks_place_matrix_and_hook_before_package_and_audit_last() {
             "project-hook",
             "package",
             "coverage",
+            "dependency",
             "audit"
         ]
     );

@@ -21,6 +21,7 @@ const DEFAULT_TASKS: &[Task] = &[
     Task::ProjectHook,
     Task::Package,
     Task::Coverage,
+    Task::Dependency,
     Task::Audit,
 ];
 

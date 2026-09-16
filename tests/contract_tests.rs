@@ -103,6 +103,43 @@ fn task_selection_includes_dependency() {
 }
 
 #[test]
+fn default_task_selection_includes_dependency() {
+    let selected = Config::default()
+        .select(&[])
+        .expect("default task selection");
+
+    assert!(selected.contains(&Task::Dependency));
+}
+
+#[test]
+fn dependency_job_runs_check_without_sync() {
+    let project = tempdir().expect("temporary project");
+    fs::create_dir_all(project.path().join(".infra/ci")).expect("ci directory");
+    fs::write(
+        project.path().join(".infra/ci/tools.toml"),
+        r#"
+[rs-infra-dependency]
+source = "https://example.invalid/dependency.git"
+revision = "0123456789abcdef0123456789abcdef01234567"
+binary = "rs-infra-dependency"
+package = "qubit-infra-dependency"
+"#,
+    )
+    .expect("tool configuration");
+
+    let workflow = jobs(
+        &[Task::Dependency],
+        &load_tools(project.path()).expect("tools load"),
+    )
+    .expect("workflow jobs");
+    let command = &workflow[0].commands[0];
+
+    assert_eq!(command.executable, "rs-infra-dependency");
+    assert_eq!(command.args, ["check"]);
+    assert!(!command.args.iter().any(|arg| arg == "sync"));
+}
+
+#[test]
 fn tool_spec_is_constructible_for_workflow_consumers() {
     let tool = ToolSpec {
         source: "source".into(),
