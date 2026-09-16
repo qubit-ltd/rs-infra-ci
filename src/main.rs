@@ -11,7 +11,6 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use clap::Subcommand;
-
 use qubit_infra_ci::Config;
 use qubit_infra_ci::Task;
 use qubit_infra_ci::load_config;

@@ -69,7 +69,8 @@ pub fn load_tools(project: &Path) -> Result<ToolConfig> {
 /// # Returns
 ///
 /// A static job template for each selected task. Use `workflow` to expand
-/// project-specific matrices, hook paths, optional checks, and environment values.
+/// project-specific matrices, hook paths, optional checks, and environment
+/// values.
 ///
 /// # Errors
 ///
@@ -120,7 +121,8 @@ pub fn workflow(project: &Path, tasks: &[Task]) -> Result<Vec<JobSpec>> {
     let config = LocalConfig::load(&project)?;
     let mut jobs = jobs(tasks, &load_tools(&project)?)?;
     for job in &mut jobs {
-        // An explicit package task determines its position; verify alone retains packaging.
+        // An explicit package task determines its position; verify alone retains
+        // packaging.
         if job.task == Task::Verify && tasks.contains(&Task::Package) {
             job.commands
                 .retain(|command| command.args != ["run", "--suite", "package"]);

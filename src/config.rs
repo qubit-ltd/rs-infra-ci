@@ -46,7 +46,8 @@ impl Config {
     ///
     /// # Parameters
     ///
-    /// * `only` - The requested subset, or an empty slice for all configured tasks.
+    /// * `only` - The requested subset, or an empty slice for all configured
+    ///   tasks.
     ///
     /// # Returns
     ///

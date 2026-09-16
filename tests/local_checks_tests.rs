@@ -9,7 +9,8 @@ use qubit_infra_ci::Config;
 use tempfile::TempDir;
 use tempfile::tempdir;
 
-/// Creates executable process fixtures without changing the test process environment.
+/// Creates executable process fixtures without changing the test process
+/// environment.
 fn fixture(config: &str) -> TempDir {
     let dir = tempdir().expect("fixture");
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("configuration directory");

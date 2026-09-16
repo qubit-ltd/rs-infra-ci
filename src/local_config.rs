@@ -44,7 +44,8 @@ pub(crate) struct LocalConfig {
 }
 
 impl Default for LocalConfig {
-    /// Uses current Cargo toolchains, the standard paths, and legacy audit fallback.
+    /// Uses current Cargo toolchains, the standard paths, and legacy audit
+    /// fallback.
     fn default() -> Self {
         Self {
             build_toolchain: None,
@@ -63,7 +64,8 @@ impl Default for LocalConfig {
 }
 
 impl LocalConfig {
-    /// Reads local options; rejects malformed values and paths outside the project.
+    /// Reads local options; rejects malformed values and paths outside the
+    /// project.
     pub(crate) fn load(project: &Path) -> Result<Self> {
         let path = project.join(".infra/ci.toml");
         let config = if path.exists() {

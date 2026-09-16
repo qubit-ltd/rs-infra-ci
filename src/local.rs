@@ -76,7 +76,8 @@ pub(crate) fn hook(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSp
     }])
 }
 
-/// Expands local tasks; returns `None` for tasks implemented by infrastructure tools.
+/// Expands local tasks; returns `None` for tasks implemented by infrastructure
+/// tools.
 pub(crate) fn commands(
     project: &Path,
     task: Task,
@@ -267,7 +268,8 @@ pub(crate) fn ensure_fuzz(project: &Path, config: &LocalConfig) -> Result<()> {
     execute(project, &install)
 }
 
-/// Creates a child process in the canonical project root without changing global state.
+/// Creates a child process in the canonical project root without changing
+/// global state.
 pub(crate) fn process(project: &Path, spec: &CommandSpec) -> Command {
     let mut command = Command::new(&spec.executable);
     command
@@ -280,7 +282,8 @@ pub(crate) fn process(project: &Path, spec: &CommandSpec) -> Command {
     command
 }
 
-/// Executes one planned command, forwarding output and failing on any nonzero exit.
+/// Executes one planned command, forwarding output and failing on any nonzero
+/// exit.
 pub(crate) fn execute(project: &Path, spec: &CommandSpec) -> Result<()> {
     let status = process(project, spec)
         .status()
@@ -291,8 +294,9 @@ pub(crate) fn execute(project: &Path, spec: &CommandSpec) -> Result<()> {
     Ok(())
 }
 
-/// Audits dependencies and retries only recognized advisory-database fetch failures.
-/// Captures and forwards both streams; vulnerability and retry failures remain fatal.
+/// Audits dependencies and retries only recognized advisory-database fetch
+/// failures. Captures and forwards both streams; vulnerability and retry
+/// failures remain fatal.
 pub(crate) fn audit(project: &Path, spec: &CommandSpec, config: &LocalConfig) -> Result<()> {
     let output = process(project, spec)
         .output()

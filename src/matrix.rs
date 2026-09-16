@@ -21,7 +21,8 @@ use crate::CommandSpec;
 use crate::local;
 use crate::local_config::LocalConfig;
 
-/// Reads and validates the complete matrix before any command can mutate the project.
+/// Reads and validates the complete matrix before any command can mutate the
+/// project.
 fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
     let path = project.join(&config.matrix);
     if !path.try_exists()? {
@@ -97,7 +98,8 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
     Ok(checks.clone())
 }
 
-/// Checks identifiers used as package names or isolated artifact directory names.
+/// Checks identifiers used as package names or isolated artifact directory
+/// names.
 fn identifier(value: &str, dots: bool) -> bool {
     value
         .bytes()
@@ -138,7 +140,8 @@ fn boolean(value: &Value, key: &str, default: bool) -> Result<bool> {
         .unwrap_or(Ok(default))
 }
 
-/// Produces the Cargo commands for one validated check, including dependency preparation.
+/// Produces the Cargo commands for one validated check, including dependency
+/// preparation.
 fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<CommandSpec>> {
     let mut result = Vec::new();
     if let Some(dependency) = check.get("dependency") {
@@ -230,8 +233,9 @@ pub(crate) fn plan(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSp
         .map(|groups| groups.into_iter().flatten().collect())
 }
 
-/// Runs matrix checks sequentially, restoring the entry lockfile even on command failure.
-/// Dependency metadata must resolve exactly one matching version before tests start.
+/// Runs matrix checks sequentially, restoring the entry lockfile even on
+/// command failure. Dependency metadata must resolve exactly one matching
+/// version before tests start.
 pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
     let checks = checks(project, config)?;
     let lock = project.join("Cargo.lock");
