@@ -43,13 +43,33 @@ enum Command {
 }
 
 /// Parses arguments and executes the requested operation.
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-    let config: Config = load_config(&cli.project)?;
-    let tasks = config.select(&cli.only)?;
-
-    match cli.command {
-        Command::Plan => plan_workflow(&cli.project, &tasks),
-        Command::Check => run(&cli.project, tasks),
+fn main() {
+    if let Err(error) = execute() {
+        eprintln!("{error:#}");
+        std::process::exit(1);
     }
+}
+
+/// Parses arguments, executes the requested operation, and reports its result.
+fn execute() -> Result<()> {
+    let cli = Cli::parse();
+    let operation = match &cli.command {
+        Command::Plan => "plan",
+        Command::Check => "check",
+    };
+
+    let result = (|| {
+        let config: Config = load_config(&cli.project)?;
+        let tasks = config.select(&cli.only)?;
+
+        match cli.command {
+            Command::Plan => plan_workflow(&cli.project, &tasks),
+            Command::Check => run(&cli.project, tasks),
+        }
+    })();
+
+    if result.is_ok() {
+        println!("rs-infra-ci: {operation} succeeded");
+    }
+    result.map_err(|error| anyhow::anyhow!("rs-infra-ci: {operation} failed: {error:#}"))
 }

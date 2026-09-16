@@ -73,6 +73,7 @@ fn test_clippy_and_coverage_cfg_are_strict_and_scoped() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("rs-infra-ci: check succeeded"));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
     assert!(
         calls.contains("clippy --workspace --all-targets --all-features -- -D warnings|original|")
@@ -111,7 +112,9 @@ fn test_dependency_matrix_restores_lock_on_failure_and_stops_hook() {
     fs::write(dir.path().join("fail"), "").expect("failure marker");
     fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), r#"{"version":1,"checks":[{"name":"old","commands":["test"],"dependency":{"name":"dep","resolution":"precise","version":"1.2.3"}}]}"#).expect("matrix");
     script(&dir, "project-ci-check.sh", "#!/bin/sh\ntouch hook-ran\n");
-    assert!(!run(&dir, "check").status.success());
+    let output = run(&dir, "check");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("rs-infra-ci: check failed:"));
     assert!(
         fs::read_to_string(dir.path().join("calls"))
             .expect("matrix executed")
