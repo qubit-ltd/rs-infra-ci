@@ -74,7 +74,7 @@ fn test_clippy_and_coverage_cfg_are_strict_and_scoped() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("rs-infra-ci: check succeeded"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("✅ rs-infra-ci: check succeeded"));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
     assert!(
         calls.contains("clippy --workspace --all-targets --all-features -- -D warnings|original|")
@@ -115,7 +115,7 @@ fn test_dependency_matrix_restores_lock_on_failure_and_stops_hook() {
     script(&dir, "project-ci-check.sh", "#!/bin/sh\ntouch hook-ran\n");
     let output = run(&dir, "check");
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("rs-infra-ci: check failed:"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("❌ rs-infra-ci: check failed:"));
     assert!(
         fs::read_to_string(dir.path().join("calls"))
             .expect("matrix executed")

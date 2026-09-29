@@ -68,7 +68,7 @@ fn execute() -> Result<()> {
     })();
 
     if result.is_ok() {
-        println!("rs-infra-ci: {operation} succeeded");
+        println!("✅ rs-infra-ci: {operation} succeeded");
     }
-    result.map_err(|error| anyhow::anyhow!("rs-infra-ci: {operation} failed: {error:#}"))
+    result.map_err(|error| anyhow::anyhow!("❌ rs-infra-ci: {operation} failed: {error:#}"))
 }
