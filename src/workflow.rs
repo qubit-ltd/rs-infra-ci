@@ -28,28 +28,37 @@ use crate::local_config::LocalConfig;
 ///
 /// # Parameters
 ///
-/// * `project` - The project root containing `.infra/ci/tools.toml`.
+/// * `project` - The project root containing per-tool `tool.toml` files.
 ///
 /// # Returns
 ///
-/// The parsed tool configuration, or an empty configuration when the file is
-/// absent.
+/// The parsed tool configuration, or an empty configuration when no tool
+/// configuration files are present.
 ///
 /// # Errors
 ///
 /// Returns an error when the file cannot be read, parsed, or contains a
 /// revision that is not a full hexadecimal Git SHA.
 pub fn load_tools(project: &Path) -> Result<ToolConfig> {
-    let path = project.join(".infra/ci/tools.toml");
-    if !path.is_file() {
-        return Ok(ToolConfig {
-            tools: BTreeMap::new(),
-        });
+    let mut tools = BTreeMap::new();
+    for (name, directory) in [
+        ("rs-infra-ci", "ci"),
+        ("rs-infra-coverage", "coverage"),
+        ("rs-infra-dependency", "dependency"),
+        ("rs-infra-pages", "pages"),
+        ("rs-infra-style", "style"),
+        ("rs-infra-verify", "verify"),
+    ] {
+        let path = project.join(format!(".infra/{directory}/tool.toml"));
+        if !path.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let tool: ToolSpec = ::toml::from_str(&text)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        tools.insert(name.to_owned(), tool);
     }
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    let tools: BTreeMap<String, ToolSpec> =
-        ::toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
     for (name, tool) in &tools {
         if tool.revision.len() != 40 || !tool.revision.bytes().all(|byte| byte.is_ascii_hexdigit())
         {
@@ -187,7 +196,7 @@ pub fn plan_workflow(project: &Path, tasks: &[Task]) -> Result<()> {
 ///
 /// # Parameters
 ///
-/// * `project` - The project root containing `.infra/ci.toml`.
+/// * `project` - The project root containing `.infra/ci/ci.toml`.
 ///
 /// # Returns
 ///
@@ -198,7 +207,7 @@ pub fn plan_workflow(project: &Path, tasks: &[Task]) -> Result<()> {
 ///
 /// Returns an error when the file cannot be read or parsed.
 pub fn load_config(project: &Path) -> Result<Config> {
-    let path = project.join(".infra/ci.toml");
+    let path = project.join(".infra/ci/ci.toml");
     if !path.is_file() {
         return Ok(Config::default());
     }

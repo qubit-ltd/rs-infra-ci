@@ -42,7 +42,7 @@ Missing matrices/hooks and disabled coverage-configured Clippy are reported as
 skipped. An explicit list replaces the defaults; `--only` selects enabled tasks
 in the requested order.
 
-Configure the consumer project's `.infra/ci.toml`:
+Configure the consumer project's `.infra/ci/ci.toml`:
 
 ```toml
 tasks = ["style", "clippy", "coverage-cfg-clippy", "verify", "feature-matrix",
@@ -120,7 +120,7 @@ Abrupt process termination can prevent restoration; do not run concurrent
 lockfile writers in the same project.
 
 Migration scripts can run `rs-infra-ci --project . plan` to inspect the complete
-job plan. When `.infra/ci/tools.toml` is present, the plan also includes the
+job plan. When per-tool configuration files such as `.infra/ci/tool.toml` are present, the plan also includes the
 revision-pinned installation command for every selected tool:
 
 ```toml
@@ -161,7 +161,7 @@ Lock validation remains read-only instead of the old automatic lock sync.
 Build/test/doc/package semantics depend on the installed `rs-infra-verify`
 revision: select one that supplies the required documentation and actual-package-build guarantees.
 Conditional Miri, AddressSanitizer, fuzz,
-and Loom checks are opt-in tasks and must be included in `.infra/ci.toml` when
+and Loom checks are opt-in tasks and must be included in `.infra/ci/ci.toml` when
 the project has corresponding configuration. The orchestrator installs the
 required nightly components and pinned cargo-fuzz version. Cargo home
 management and build-artifact cleanup remain outside this tool; configure them

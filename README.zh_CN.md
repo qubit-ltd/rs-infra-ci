@@ -40,7 +40,7 @@ rs-infra-ci --project /path/to/project check
 任一步失败都会停止后续任务。缺少矩阵或 hook、未开启 coverage cfg Clippy 时会
 明确报告跳过。显式任务列表会替换默认列表；`--only` 按指定顺序执行已启用的任务。
 
-在使用此工具的项目中配置 `.infra/ci.toml`：
+在使用此工具的项目中配置 `.infra/ci/ci.toml`：
 
 ```toml
 tasks = ["style", "clippy", "coverage-cfg-clippy", "verify", "feature-matrix",
@@ -114,7 +114,7 @@ Clippy 也使用它。文件路径相对于项目根目录。未知的 `[local]`
 不要在同一项目中并发写入锁文件。
 
 迁移脚本运行 `rs-infra-ci --project . plan` 可以查看完整 job 计划。
-存在 `.infra/ci/tools.toml` 时，计划还会输出每个选中工具的固定 revision
+存在各职责目录下的 `tool.toml` 文件（例如 `.infra/ci/tool.toml`）时，计划还会输出每个选中工具的固定 revision
 安装命令：
 
 ```toml
@@ -148,7 +148,7 @@ release 构建、项目 hook、audit 及条件高级 suite 编排。已有显式
 语义取决于安装的 `rs-infra-verify` revision；必须选择具备文档和实际打包验证能力
 的版本。条件 Miri、
 AddressSanitizer、fuzz 和 Loom 检查是可选任务；项目存在对应配置时，必须将
-任务加入 `.infra/ci.toml`。编排器会安装所需 nightly 组件和固定版本 cargo-fuzz。
+任务加入 `.infra/ci/ci.toml`。编排器会安装所需 nightly 组件和固定版本 cargo-fuzz。
 Cargo home 管理和构建产物清理仍需由相应工具或工作流负责。
 除非项目启用了全部必需任务，编排器通过不能单独证明与旧 CI 完全等价。
 

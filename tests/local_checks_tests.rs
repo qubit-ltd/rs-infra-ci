@@ -14,7 +14,7 @@ use tempfile::tempdir;
 fn fixture(config: &str) -> TempDir {
     let dir = tempdir().expect("fixture");
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("configuration directory");
-    fs::write(dir.path().join(".infra/ci.toml"), config).expect("configuration");
+    fs::write(dir.path().join(".infra/ci/ci.toml"), config).expect("configuration");
     script(
         &dir,
         "cargo",

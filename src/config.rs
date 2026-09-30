@@ -70,7 +70,7 @@ impl Config {
         }
         for task in only {
             if !configured.contains(task) {
-                bail!("task '{task}' is not enabled in .infra/ci.toml");
+                bail!("task '{task}' is not enabled in .infra/ci/ci.toml");
             }
         }
         validate_unique(only)?;

@@ -15,7 +15,7 @@ use anyhow::Result;
 use anyhow::bail;
 use serde::Deserialize;
 
-/// Local execution settings read from the `[local]` table in `.infra/ci.toml`.
+/// Local execution settings read from the `[local]` table in `.infra/ci/ci.toml`.
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LocalConfig {
@@ -67,7 +67,7 @@ impl LocalConfig {
     /// Reads local options; rejects malformed values and paths outside the
     /// project.
     pub(crate) fn load(project: &Path) -> Result<Self> {
-        let path = project.join(".infra/ci.toml");
+        let path = project.join(".infra/ci/ci.toml");
         let config = if path.exists() {
             let text = std::fs::read_to_string(&path)?;
             let document: toml::Value = toml::from_str(&text)?;

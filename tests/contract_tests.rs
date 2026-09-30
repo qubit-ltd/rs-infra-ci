@@ -31,11 +31,10 @@ fn verify_job_contains_lock_and_all_verification_suites() {
 #[test]
 fn all_migration_tasks_have_pinned_install_information() {
     let project = tempdir().expect("temporary project");
-    fs::create_dir_all(project.path().join(".infra/ci")).expect("ci directory");
+    fs::create_dir_all(project.path().join(".infra/dependency")).expect("dependency directory");
     fs::write(
-        project.path().join(".infra/ci/tools.toml"),
+        project.path().join(".infra/dependency/tool.toml"),
         r#"
-[rs-infra-dependency]
 source = "https://example.invalid/dependency.git"
 revision = "0123456789abcdef0123456789abcdef01234567"
 binary = "rs-infra-dependency"
@@ -67,10 +66,10 @@ package = "qubit-infra-dependency"
 #[test]
 fn invalid_tool_revision_is_rejected() {
     let project = tempdir().expect("temporary project");
-    fs::create_dir_all(project.path().join(".infra/ci")).expect("ci directory");
+    fs::create_dir_all(project.path().join(".infra/style")).expect("style directory");
     fs::write(
-        project.path().join(".infra/ci/tools.toml"),
-        "[rs-infra-style]\nrevision = \"not-a-sha\"\n",
+        project.path().join(".infra/style/tool.toml"),
+        "revision = \"not-a-sha\"\n",
     )
     .expect("tool configuration");
 
@@ -114,11 +113,10 @@ fn default_task_selection_includes_dependency() {
 #[test]
 fn dependency_job_runs_check_without_sync() {
     let project = tempdir().expect("temporary project");
-    fs::create_dir_all(project.path().join(".infra/ci")).expect("ci directory");
+    fs::create_dir_all(project.path().join(".infra/dependency")).expect("dependency directory");
     fs::write(
-        project.path().join(".infra/ci/tools.toml"),
+        project.path().join(".infra/dependency/tool.toml"),
         r#"
-[rs-infra-dependency]
 source = "https://example.invalid/dependency.git"
 revision = "0123456789abcdef0123456789abcdef01234567"
 binary = "rs-infra-dependency"
