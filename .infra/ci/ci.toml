@@ -2,5 +2,6 @@
 tasks = ["clippy"]
 
 [local]
+clippy_toolchain = "nightly-2026-06-05"
 coverage_cfg_clippy = false
 audit_cached_fallback = false
