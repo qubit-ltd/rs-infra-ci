@@ -107,6 +107,23 @@ fn test_matrix_preserves_feature_package_doc_and_clippy_semantics() {
 }
 
 #[test]
+fn test_empty_matrix_skips_compatibility_checks() {
+    let dir = fixture("tasks = ['feature-matrix']\n");
+    fs::write(
+        dir.path().join(".infra/ci/cargo-matrix.json"),
+        r#"{"version":1,"checks":[]}"#,
+    )
+    .expect("empty matrix");
+    let output = run(&dir, "check");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!dir.path().join("calls").exists());
+}
+
+#[test]
 fn test_dependency_matrix_restores_lock_on_failure_and_stops_hook() {
     let dir = fixture("tasks = ['feature-matrix', 'project-hook']\n");
     fs::write(dir.path().join("Cargo.lock"), "baseline").expect("lock");

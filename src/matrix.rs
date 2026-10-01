@@ -37,7 +37,7 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
         .as_array()
         .context("matrix checks must be an array")?;
     if checks.is_empty() {
-        bail!("matrix checks must not be empty");
+        return Ok(Vec::new());
     }
     let mut names = BTreeSet::new();
     for check in checks {
