@@ -79,11 +79,7 @@ impl Task {
             | Self::Loom
             | Self::StrictDoc
             | Self::Readme => "rs-infra-verify",
-            Self::Clippy
-            | Self::CoverageCfgClippy
-            | Self::FeatureMatrix
-            | Self::ReleaseBuild
-            | Self::Audit => "cargo",
+            Self::Clippy | Self::CoverageCfgClippy | Self::FeatureMatrix | Self::ReleaseBuild | Self::Audit => "cargo",
             Self::ProjectHook => "./project-ci-check.sh",
             Self::Coverage => "rs-infra-coverage",
             Self::Pages => "rs-infra-pages",

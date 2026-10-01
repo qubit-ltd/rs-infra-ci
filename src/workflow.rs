@@ -53,15 +53,12 @@ pub fn load_tools(project: &Path) -> Result<ToolConfig> {
         if !path.is_file() {
             continue;
         }
-        let text = std::fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
-        let tool: ToolSpec = ::toml::from_str(&text)
-            .with_context(|| format!("failed to parse {}", path.display()))?;
+        let text = std::fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+        let tool: ToolSpec = ::toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
         tools.insert(name.to_owned(), tool);
     }
     for (name, tool) in &tools {
-        if tool.revision.len() != 40 || !tool.revision.bytes().all(|byte| byte.is_ascii_hexdigit())
-        {
+        if tool.revision.len() != 40 || !tool.revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             bail!("tool '{name}' revision must be a 40-character hexadecimal Git SHA");
         }
     }
@@ -124,9 +121,7 @@ pub fn jobs(tasks: &[Task], tools: &ToolConfig) -> Result<Vec<JobSpec>> {
 ///
 /// Propagates tool-file parsing, validation, and duplicate-task errors.
 pub fn workflow(project: &Path, tasks: &[Task]) -> Result<Vec<JobSpec>> {
-    let project = project
-        .canonicalize()
-        .context("invalid project directory")?;
+    let project = project.canonicalize().context("invalid project directory")?;
     let config = LocalConfig::load(&project)?;
     let mut jobs = jobs(tasks, &load_tools(&project)?)?;
     for job in &mut jobs {
@@ -137,22 +132,18 @@ pub fn workflow(project: &Path, tasks: &[Task]) -> Result<Vec<JobSpec>> {
                 .retain(|command| command.args != ["run", "--suite", "package"]);
         }
         if job.task == Task::Verify && tasks.contains(&Task::StrictDoc) {
-            job.commands
-                .retain(|command| command.args != ["run", "--suite", "doc"]);
+            job.commands.retain(|command| command.args != ["run", "--suite", "doc"]);
         }
         if let Some(commands) = local::commands(&project, job.task, &config)? {
             job.commands = commands;
         }
         for command in &mut job.commands {
             if command.executable.starts_with("rs-infra-") {
-                command.args.splice(
-                    0..0,
-                    ["--project".into(), project.to_string_lossy().into_owned()],
-                );
+                command
+                    .args
+                    .splice(0..0, ["--project".into(), project.to_string_lossy().into_owned()]);
                 if let Some(toolchain) = &config.build_toolchain {
-                    command
-                        .env
-                        .insert("RUSTUP_TOOLCHAIN".into(), toolchain.clone());
+                    command.env.insert("RUSTUP_TOOLCHAIN".into(), toolchain.clone());
                 }
             }
         }
@@ -211,8 +202,7 @@ pub fn load_config(project: &Path) -> Result<Config> {
     if !path.is_file() {
         return Ok(Config::default());
     }
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let text = std::fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     ::toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
 }
 
@@ -251,9 +241,20 @@ pub fn plan(project: &Path, tasks: Vec<Task>) -> Result<()> {
 ///
 /// Returns an error when a task cannot start or exits unsuccessfully.
 pub fn run(project: &Path, tasks: Vec<Task>) -> Result<()> {
-    let project = project
-        .canonicalize()
-        .context("invalid project directory")?;
+    run_with_coverage_policy(project, tasks, true)
+}
+
+/// Executes CI tasks and optionally allows coverage percentage shortfalls.
+///
+/// Coverage collection and validation still run when `enforce_thresholds` is
+/// false. Other failed commands remain errors.
+///
+/// # Errors
+///
+/// Returns an error when planning or a task fails, including a coverage
+/// threshold failure when `enforce_thresholds` is true.
+pub fn run_with_coverage_policy(project: &Path, tasks: Vec<Task>, enforce_thresholds: bool) -> Result<()> {
+    let project = project.canonicalize().context("invalid project directory")?;
     let config = LocalConfig::load(&project)?;
     let bin_dir = std::env::var_os("RS_INFRA_BIN_DIR").map(PathBuf::from);
     let jobs = workflow(&project, &tasks)?;
@@ -270,6 +271,9 @@ pub fn run(project: &Path, tasks: Vec<Task>) -> Result<()> {
             local::ensure_fuzz(&project, &config)?;
         }
         for mut spec in job.commands {
+            if job.task == Task::Coverage && !enforce_thresholds {
+                spec.args.push("--ignore-thresholds".into());
+            }
             if spec.executable.starts_with("rs-infra-")
                 && let Some(dir) = &bin_dir
             {

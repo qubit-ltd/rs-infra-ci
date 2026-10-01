@@ -25,10 +25,7 @@ pub(crate) fn cargo(config: &LocalConfig, args: Vec<String>) -> CommandSpec {
     let toolchain = if args.first().is_some_and(|arg| arg.starts_with('+')) {
         None
     } else if args.first().is_some_and(|arg| arg == "clippy") {
-        config
-            .clippy_toolchain
-            .as_ref()
-            .or(config.build_toolchain.as_ref())
+        config.clippy_toolchain.as_ref().or(config.build_toolchain.as_ref())
     } else {
         config.build_toolchain.as_ref()
     };
@@ -78,24 +75,15 @@ pub(crate) fn hook(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSp
 
 /// Expands local tasks; returns `None` for tasks implemented by infrastructure
 /// tools.
-pub(crate) fn commands(
-    project: &Path,
-    task: Task,
-    config: &LocalConfig,
-) -> Result<Option<Vec<CommandSpec>>> {
+pub(crate) fn commands(project: &Path, task: Task, config: &LocalConfig) -> Result<Option<Vec<CommandSpec>>> {
     let commands = match task {
         Task::Clippy | Task::CoverageCfgClippy => {
             if task == Task::CoverageCfgClippy && !config.coverage_cfg_clippy {
                 return Ok(Some(Vec::new()));
             }
-            let mut command = cargo(
-                config,
-                task.commands()[0].iter().map(|arg| (*arg).into()).collect(),
-            );
+            let mut command = cargo(config, task.commands()[0].iter().map(|arg| (*arg).into()).collect());
             if task == Task::CoverageCfgClippy {
-                command
-                    .env
-                    .insert("RUSTFLAGS".into(), "--cfg coverage".into());
+                command.env.insert("RUSTFLAGS".into(), "--cfg coverage".into());
             }
             vec![command]
         }
@@ -106,11 +94,7 @@ pub(crate) fn commands(
             rustup_toolchain(config, &["miri", "rust-src"]),
             cargo(
                 config,
-                vec![
-                    format!("+{}", config.nightly_toolchain),
-                    "miri".into(),
-                    "setup".into(),
-                ],
+                vec![format!("+{}", config.nightly_toolchain), "miri".into(), "setup".into()],
             ),
             verify_suite("miri", config),
         ],
@@ -179,11 +163,7 @@ fn verify_suite(suite: &str, config: &LocalConfig) -> CommandSpec {
     CommandSpec {
         executable: "rs-infra-verify".into(),
         args: vec!["run".into(), "--suite".into(), suite.into()],
-        env: [(
-            "RS_INFRA_NIGHTLY_TOOLCHAIN".into(),
-            config.nightly_toolchain.clone(),
-        )]
-        .into(),
+        env: [("RS_INFRA_NIGHTLY_TOOLCHAIN".into(), config.nightly_toolchain.clone())].into(),
     }
 }
 
@@ -204,10 +184,7 @@ fn verify_fuzz(config: &LocalConfig) -> CommandSpec {
             "RS_INFRA_FUZZ_SECONDS_PER_TARGET".into(),
             config.fuzz_seconds_per_target.to_string(),
         ),
-        (
-            "RS_INFRA_FUZZ_MAX_LEN".into(),
-            config.fuzz_max_len.to_string(),
-        ),
+        ("RS_INFRA_FUZZ_MAX_LEN".into(), config.fuzz_max_len.to_string()),
     ]);
     command
 }
@@ -272,10 +249,7 @@ pub(crate) fn ensure_fuzz(project: &Path, config: &LocalConfig) -> Result<()> {
 /// global state.
 pub(crate) fn process(project: &Path, spec: &CommandSpec) -> Command {
     let mut command = Command::new(&spec.executable);
-    command
-        .current_dir(project)
-        .args(&spec.args)
-        .envs(&spec.env);
+    command.current_dir(project).args(&spec.args).envs(&spec.env);
     if spec.env.contains_key("RUSTFLAGS") {
         command.env_remove("CARGO_ENCODED_RUSTFLAGS");
     }
@@ -298,9 +272,7 @@ pub(crate) fn execute(project: &Path, spec: &CommandSpec) -> Result<()> {
 /// failures. Captures and forwards both streams; vulnerability and retry
 /// failures remain fatal.
 pub(crate) fn audit(project: &Path, spec: &CommandSpec, config: &LocalConfig) -> Result<()> {
-    let output = process(project, spec)
-        .output()
-        .context("failed to start cargo audit")?;
+    let output = process(project, spec).output().context("failed to start cargo audit")?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     print!("{stdout}");
@@ -319,9 +291,7 @@ pub(crate) fn audit(project: &Path, spec: &CommandSpec, config: &LocalConfig) ->
         .iter()
         .any(|message| log.contains(message))
     {
-        eprintln!(
-            "warning: audit database fetch failed; retrying cached data. CI must also audit current data."
-        );
+        eprintln!("warning: audit database fetch failed; retrying cached data. CI must also audit current data.");
         let mut retry = spec.clone();
         retry.args.extend(["--no-fetch".into(), "--stale".into()]);
         return execute(project, &retry);

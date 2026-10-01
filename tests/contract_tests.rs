@@ -12,7 +12,10 @@ use qubit_infra_ci::Config;
 use qubit_infra_ci::Task;
 use qubit_infra_ci::ToolSpec;
 use qubit_infra_ci::jobs;
+use qubit_infra_ci::load_config;
 use qubit_infra_ci::load_tools;
+use qubit_infra_ci::plan_workflow;
+use qubit_infra_ci::workflow;
 use tempfile::tempdir;
 
 #[test]
@@ -78,8 +81,7 @@ fn invalid_tool_revision_is_rejected() {
 
 #[test]
 fn duplicate_jobs_are_rejected() {
-    let error = jobs(&[Task::Style, Task::Style], &Default::default())
-        .expect_err("duplicate tasks must be rejected");
+    let error = jobs(&[Task::Style, Task::Style], &Default::default()).expect_err("duplicate tasks must be rejected");
 
     assert!(error.to_string().contains("configured more than once"));
 }
@@ -87,13 +89,7 @@ fn duplicate_jobs_are_rejected() {
 #[test]
 fn task_selection_includes_dependency() {
     let selected = Config {
-        tasks: vec![
-            Task::Style,
-            Task::Verify,
-            Task::Coverage,
-            Task::Pages,
-            Task::Dependency,
-        ],
+        tasks: vec![Task::Style, Task::Verify, Task::Coverage, Task::Pages, Task::Dependency],
     }
     .select(&[])
     .expect("task selection");
@@ -103,9 +99,7 @@ fn task_selection_includes_dependency() {
 
 #[test]
 fn default_task_selection_includes_dependency() {
-    let selected = Config::default()
-        .select(&[])
-        .expect("default task selection");
+    let selected = Config::default().select(&[]).expect("default task selection");
 
     assert!(selected.contains(&Task::Dependency));
 }
@@ -125,11 +119,7 @@ package = "qubit-infra-dependency"
     )
     .expect("tool configuration");
 
-    let workflow = jobs(
-        &[Task::Dependency],
-        &load_tools(project.path()).expect("tools load"),
-    )
-    .expect("workflow jobs");
+    let workflow = jobs(&[Task::Dependency], &load_tools(project.path()).expect("tools load")).expect("workflow jobs");
     let command = &workflow[0].commands[0];
 
     assert_eq!(command.executable, "rs-infra-dependency");
@@ -146,4 +136,28 @@ fn tool_spec_is_constructible_for_workflow_consumers() {
         package: "package".into(),
     };
     assert_eq!(tool.binary, "binary");
+}
+
+#[test]
+fn project_workflow_uses_ci_configuration_and_can_be_planned() {
+    let project = tempdir().expect("temporary project");
+    fs::create_dir_all(project.path().join(".infra/ci")).expect("CI directory");
+    fs::write(project.path().join(".infra/ci/ci.toml"), "tasks = ['style']\n").expect("CI configuration");
+
+    let config = load_config(project.path()).expect("CI configuration loads");
+    assert_eq!(config.tasks, [Task::Style]);
+
+    let jobs = workflow(project.path(), &[Task::Style]).expect("project workflow");
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].commands[0].executable, "rs-infra-style");
+    assert_eq!(
+        jobs[0].commands[0].args,
+        [
+            "--project".to_owned(),
+            project.path().to_string_lossy().into_owned(),
+            "check".to_owned(),
+        ]
+    );
+
+    plan_workflow(project.path(), &[Task::Style]).expect("workflow plan");
 }

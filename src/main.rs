@@ -15,7 +15,7 @@ use qubit_infra_ci::Config;
 use qubit_infra_ci::Task;
 use qubit_infra_ci::load_config;
 use qubit_infra_ci::plan_workflow;
-use qubit_infra_ci::run;
+use qubit_infra_ci::run_with_coverage_policy;
 
 /// Command-line arguments for the CI task orchestrator.
 #[derive(Debug, Parser)]
@@ -27,6 +27,9 @@ struct Cli {
     /// Comma-separated tasks to run instead of all configured tasks.
     #[arg(long, value_delimiter = ',')]
     only: Vec<Task>,
+    /// Allow coverage threshold shortfalls while still running coverage.
+    #[arg(long)]
+    ignore_coverage_thresholds: bool,
     /// Operation to perform.
     #[command(subcommand)]
     command: Command,
@@ -63,7 +66,7 @@ fn execute() -> Result<()> {
 
         match cli.command {
             Command::Plan => plan_workflow(&cli.project, &tasks),
-            Command::Check => run(&cli.project, tasks),
+            Command::Check => run_with_coverage_policy(&cli.project, tasks, !cli.ignore_coverage_thresholds),
         }
     })();
 

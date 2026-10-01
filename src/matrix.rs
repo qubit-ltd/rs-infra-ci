@@ -28,8 +28,8 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
     if !path.try_exists()? {
         return Ok(Vec::new());
     }
-    let document: Value = from_slice(&std::fs::read(&path)?)
-        .with_context(|| format!("invalid matrix {}", path.display()))?;
+    let document: Value =
+        from_slice(&std::fs::read(&path)?).with_context(|| format!("invalid matrix {}", path.display()))?;
     if document["version"] != 1 {
         bail!("matrix version must be 1");
     }
@@ -41,9 +41,7 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
     }
     let mut names = BTreeSet::new();
     for check in checks {
-        let name = check["name"]
-            .as_str()
-            .context("matrix check name must be a string")?;
+        let name = check["name"].as_str().context("matrix check name must be a string")?;
         if !identifier(name, true) || !names.insert(name) {
             bail!("invalid or duplicate matrix check name: {name}");
         }
@@ -101,13 +99,10 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
 /// Checks identifiers used as package names or isolated artifact directory
 /// names.
 fn identifier(value: &str, dots: bool) -> bool {
-    value
-        .bytes()
-        .next()
-        .is_some_and(|byte| byte.is_ascii_alphanumeric())
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || b"_-".contains(&byte) || (dots && b".+".contains(&byte))
-        })
+    value.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte) || (dots && b".+".contains(&byte)))
 }
 
 /// Extracts a string array, rejecting null and non-string elements.
@@ -132,11 +127,7 @@ fn strings(value: &Value, key: &str) -> Result<Vec<String>> {
 fn boolean(value: &Value, key: &str, default: bool) -> Result<bool> {
     value
         .get(key)
-        .map(|value| {
-            value
-                .as_bool()
-                .with_context(|| format!("{key} must be boolean"))
-        })
+        .map(|value| value.as_bool().with_context(|| format!("{key} must be boolean")))
         .unwrap_or(Ok(default))
 }
 
@@ -148,18 +139,12 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
         let mut args = vec![
             "update".into(),
             "--package".into(),
-            dependency["name"]
-                .as_str()
-                .context("dependency name")?
-                .into(),
+            dependency["name"].as_str().context("dependency name")?.into(),
         ];
         if dependency["resolution"] == "precise" {
             args.extend([
                 "--precise".into(),
-                dependency["version"]
-                    .as_str()
-                    .context("dependency version")?
-                    .into(),
+                dependency["version"].as_str().context("dependency version")?.into(),
             ]);
         }
         result.push(local::cargo(config, args));
@@ -216,10 +201,9 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
         .join("target/infra-feature-matrix")
         .join(check["name"].as_str().context("check name")?);
     for command in &mut result {
-        command.env.insert(
-            "CARGO_TARGET_DIR".into(),
-            target.to_string_lossy().into_owned(),
-        );
+        command
+            .env
+            .insert("CARGO_TARGET_DIR".into(), target.to_string_lossy().into_owned());
     }
     Ok(result)
 }
@@ -259,10 +243,7 @@ pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
                         .output()
                         .context("matrix dependency metadata")?;
                     if !output.status.success() {
-                        bail!(
-                            "matrix metadata failed: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
+                        bail!("matrix metadata failed: {}", String::from_utf8_lossy(&output.stderr));
                     }
                     let metadata: Value = from_slice(&output.stdout)?;
                     let dependency = dependency.context("dependency configuration")?;
@@ -275,11 +256,7 @@ pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
                         .collect();
                     if versions.len() != 1
                         || (dependency["resolution"] == "precise"
-                            && !versions.contains(
-                                dependency["version"]
-                                    .as_str()
-                                    .context("dependency version")?,
-                            ))
+                            && !versions.contains(dependency["version"].as_str().context("dependency version")?))
                     {
                         bail!("matrix dependency resolved an unexpected version: {versions:?}");
                     }
@@ -297,12 +274,7 @@ pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
                     result => result,
                 },
             };
-            restored.with_context(|| {
-                format!(
-                    "failed to restore {}; matrix result: {result:?}",
-                    lock.display()
-                )
-            })?;
+            restored.with_context(|| format!("failed to restore {}; matrix result: {result:?}", lock.display()))?;
         }
         result?;
     }

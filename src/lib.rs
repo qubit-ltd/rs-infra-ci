@@ -31,4 +31,5 @@ pub use workflow::load_tools;
 pub use workflow::plan;
 pub use workflow::plan_workflow;
 pub use workflow::run;
+pub use workflow::run_with_coverage_policy;
 pub use workflow::workflow;

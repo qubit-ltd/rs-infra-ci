@@ -1,3 +1,11 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
+
 #![cfg(unix)]
 
 use std::fs;
@@ -51,11 +59,7 @@ fn run(dir: &TempDir, operation: &str) -> Output {
         .args(["--project", dir.path().to_str().expect("path"), operation])
         .env(
             "PATH",
-            format!(
-                "{}:{}",
-                dir.path().display(),
-                std::env::var("PATH").expect("PATH")
-            ),
+            format!("{}:{}", dir.path().display(), std::env::var("PATH").expect("PATH")),
         )
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .env("RUSTFLAGS", "original")
@@ -63,25 +67,45 @@ fn run(dir: &TempDir, operation: &str) -> Output {
         .expect("CLI")
 }
 
+/// Verifies the opt-in coverage flag reaches only the coverage subprocess.
+#[test]
+fn test_coverage_threshold_override_reaches_coverage_collector() {
+    let dir = fixture("tasks = ['coverage']\n");
+    script(
+        &dir,
+        "rs-infra-coverage",
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> calls\ncase \"$*\" in *--ignore-thresholds) exit 0;; *) exit 7;; esac\n",
+    );
+    let strict = run(&dir, "check");
+    assert!(!strict.status.success(), "the default must enforce coverage thresholds");
+
+    let ignored = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
+        .args([
+            "--project",
+            dir.path().to_str().expect("UTF-8 path"),
+            "--ignore-coverage-thresholds",
+            "check",
+        ])
+        .env(
+            "PATH",
+            format!("{}:{}", dir.path().display(), std::env::var("PATH").expect("PATH")),
+        )
+        .output()
+        .expect("run CI with ignored coverage thresholds");
+    assert!(ignored.status.success(), "{}", String::from_utf8_lossy(&ignored.stderr));
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("coverage calls");
+    assert!(calls.contains("collect --ignore-thresholds"));
+}
+
 #[test]
 fn test_clippy_and_coverage_cfg_are_strict_and_scoped() {
-    let dir = fixture(
-        "tasks = ['clippy', 'coverage-cfg-clippy', 'audit']\n[local]\ncoverage_cfg_clippy = true\n",
-    );
+    let dir = fixture("tasks = ['clippy', 'coverage-cfg-clippy', 'audit']\n[local]\ncoverage_cfg_clippy = true\n");
     let output = run(&dir, "check");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(String::from_utf8_lossy(&output.stdout).contains("✅ rs-infra-ci: check succeeded"));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
-    assert!(
-        calls.contains("clippy --workspace --all-targets --all-features -- -D warnings|original|")
-    );
-    assert!(calls.contains(
-        "clippy --workspace --all-targets --all-features -- -D warnings|--cfg coverage|"
-    ));
+    assert!(calls.contains("clippy --workspace --all-targets --all-features -- -D warnings|original|"));
+    assert!(calls.contains("clippy --workspace --all-targets --all-features -- -D warnings|--cfg coverage|"));
     assert!(calls.contains("audit|original|"));
 }
 
@@ -90,17 +114,11 @@ fn test_matrix_preserves_feature_package_doc_and_clippy_semantics() {
     let dir = fixture("tasks = ['feature-matrix']\n");
     fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), r#"{"version":1,"checks":[{"name":"minimal","commands":["test","doc","doc-test","clippy"],"defaultFeatures":false,"features":["regex"],"packages":["one"]},{"name":"all","commands":["check"],"allFeatures":true}]}"#).expect("matrix");
     let output = run(&dir, "check");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
     assert!(calls.contains("test --package one --no-default-features --features regex"));
     assert!(calls.contains("test --doc --package one"));
-    assert!(calls.contains(
-        "clippy --all-targets --package one --no-default-features --features regex -- -D warnings"
-    ));
+    assert!(calls.contains("clippy --all-targets --package one --no-default-features --features regex -- -D warnings"));
     assert!(calls.contains("|-D warnings|"));
     assert!(calls.contains("check --workspace --all-features"));
     assert!(calls.contains("target/infra-feature-matrix/minimal"));
@@ -115,11 +133,7 @@ fn test_empty_matrix_skips_compatibility_checks() {
     )
     .expect("empty matrix");
     let output = run(&dir, "check");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(!dir.path().join("calls").exists());
 }
 
@@ -203,11 +217,7 @@ fn test_advanced_suites_prepare_tools_and_forward_suite_configuration() {
         "#!/bin/sh\nprintf '%s|%s|%s|%s|%s|%s\\n' \"$*\" \"$RS_INFRA_NIGHTLY_TOOLCHAIN\" \"$RS_INFRA_FUZZ_MODE\" \"$RS_INFRA_FUZZ_SECONDS_PER_TARGET\" \"$RS_INFRA_FUZZ_MAX_LEN\" \"$RUSTFLAGS\" >> \"$PWD/verify-calls\"\n",
     );
     let output = run(&dir, "check");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
     assert!(calls.contains("fuzz --version"));
     assert!(calls.contains("+nightly-2026-06-05 miri setup"));
@@ -224,9 +234,8 @@ fn test_advanced_suites_prepare_tools_and_forward_suite_configuration() {
 
 #[test]
 fn test_strict_docs_readme_and_release_build_keep_legacy_local_checks() {
-    let dir = fixture(
-        "tasks = ['verify', 'strict-doc', 'readme', 'release-build']\n[local]\nbuild_toolchain = '1.94.0'\n",
-    );
+    let dir =
+        fixture("tasks = ['verify', 'strict-doc', 'readme', 'release-build']\n[local]\nbuild_toolchain = '1.94.0'\n");
     script(
         &dir,
         "rs-infra-verify",
@@ -235,11 +244,7 @@ fn test_strict_docs_readme_and_release_build_keep_legacy_local_checks() {
 
     let output = run(&dir, "check");
 
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
     assert_eq!(
         calls
@@ -266,11 +271,7 @@ fn test_fuzz_installs_configured_version_when_existing_version_differs() {
     fs::write(dir.path().join("fuzz-wrong-version"), "").expect("old version marker");
     script(&dir, "rs-infra-verify", "#!/bin/sh\nexit 0\n");
     let output = run(&dir, "check");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
     assert!(calls.contains("install cargo-fuzz --locked --version 0.13.2"));
 }
@@ -284,11 +285,7 @@ fn test_disabled_fuzz_does_not_install_cargo_fuzz() {
         "#!/bin/sh\nprintf '%s|%s\\n' \"$*\" \"$RS_INFRA_FUZZ_MODE\" >> \"$PWD/verify-calls\"\n",
     );
     let output = run(&dir, "check");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(!dir.path().join("calls").exists());
     let verify_calls = fs::read_to_string(dir.path().join("verify-calls")).expect("suite calls");
     assert!(verify_calls.contains("run --suite fuzz|disabled"));
@@ -297,14 +294,54 @@ fn test_disabled_fuzz_does_not_install_cargo_fuzz() {
 #[test]
 fn test_invalid_matrix_fails_before_any_command() {
     for invalid in [
+        "{",
+        r#"{"version":2,"checks":[]}"#,
+        r#"{"version":1,"checks":null}"#,
+        r#"{"version":1,"checks":[{"name":3,"commands":["test"]}]}"#,
+        r#"{"version":1,"checks":[{"name":"bad","commands":"test"}]}"#,
         r#"{"version":1,"checks":[{"name":"bad","commands":["clean"]}]}"#,
+        r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"features":[3]}]}"#,
+        r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"features":["bad feature"]}]}"#,
+        r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"packages":["bad/name"]}]}"#,
+        r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"defaultFeatures":"yes"}]}"#,
         r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"allFeatures":true,"defaultFeatures":false}]}"#,
         r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"packages":[]}]}"#,
         r#"{"version":1,"checks":[{"name":"same","commands":["test"]},{"name":"same","commands":["test"]}]}"#,
+        r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"dependency":{"name":"bad/name","resolution":"latest"}}]}"#,
+        r#"{"version":1,"checks":[{"name":"bad","commands":["test"],"dependency":{"name":"dep","resolution":"precise","version":"bad/version"}}]}"#,
     ] {
         let dir = fixture("tasks = ['feature-matrix']\n");
         fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), invalid).expect("invalid matrix");
         assert!(!run(&dir, "check").status.success());
+        assert!(!dir.path().join("calls").exists());
+    }
+}
+
+#[test]
+fn test_malformed_tool_configuration_fails_before_any_command() {
+    let dir = fixture("tasks = ['verify']\n");
+    fs::create_dir_all(dir.path().join(".infra/ci")).expect("tool directory");
+    fs::write(dir.path().join(".infra/ci/tool.toml"), "revision = [\n").expect("tool configuration");
+
+    let output = run(&dir, "check");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("failed to parse"));
+    assert!(!dir.path().join("calls").exists());
+}
+
+#[test]
+fn test_invalid_local_configuration_fails_before_any_command() {
+    for config in [
+        "tasks = ['verify']\n[local]\nmatrix = '../Cargo.toml'\n",
+        "tasks = ['verify']\n[local]\nnightly_toolchain = 'nightly'\n",
+        "tasks = ['verify']\n[local]\nfuzz_mode = 'unknown'\n",
+        "tasks = ['verify']\n[local]\nfuzz_seconds_per_target = 0\n",
+    ] {
+        let dir = fixture(config);
+        let output = run(&dir, "check");
+
+        assert!(!output.status.success());
         assert!(!dir.path().join("calls").exists());
     }
 }
@@ -330,28 +367,16 @@ fn test_relative_project_and_selected_toolchain_are_used() {
         .current_dir(dir.path().parent().expect("parent"))
         .args([
             "--project",
-            dir.path()
-                .file_name()
-                .expect("name")
-                .to_str()
-                .expect("name"),
+            dir.path().file_name().expect("name").to_str().expect("name"),
             "check",
         ])
         .env(
             "PATH",
-            format!(
-                "{}:{}",
-                dir.path().display(),
-                std::env::var("PATH").expect("PATH")
-            ),
+            format!("{}:{}", dir.path().display(), std::env::var("PATH").expect("PATH")),
         )
         .output()
         .expect("CLI");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
     assert!(calls.contains("+nightly-2026-06-05 clippy"));
     assert!(calls.contains("+1.94.0 audit"));
@@ -380,11 +405,7 @@ fn test_plan_and_check_include_the_same_matrix_commands_without_plan_side_effect
         r#"{"version":1,"checks":[{"name":"all","commands":["clippy"],"allFeatures":true}]}"#,
     )
     .expect("matrix");
-    script(
-        &dir,
-        "project-ci-check.sh",
-        "#!/bin/sh\necho hook >> calls\n",
-    );
+    script(&dir, "project-ci-check.sh", "#!/bin/sh\necho hook >> calls\n");
     let plan = run(&dir, "plan");
     assert!(plan.status.success());
     assert!(!dir.path().join("calls").exists());
@@ -431,16 +452,8 @@ fn test_dependency_named_metadata_still_runs_update() {
 #[test]
 fn test_explicit_package_runs_once_after_hook_and_infra_receives_project() {
     let dir = fixture("tasks = ['verify', 'project-hook', 'package']\n");
-    script(
-        &dir,
-        "rs-infra-verify",
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> calls\n",
-    );
-    script(
-        &dir,
-        "project-ci-check.sh",
-        "#!/bin/sh\necho hook >> calls\n",
-    );
+    script(&dir, "rs-infra-verify", "#!/bin/sh\nprintf '%s\\n' \"$*\" >> calls\n");
+    script(&dir, "project-ci-check.sh", "#!/bin/sh\necho hook >> calls\n");
     assert!(run(&dir, "check").status.success());
     let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
     assert_eq!(calls.matches("--suite package").count(), 1);

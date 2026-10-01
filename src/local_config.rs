@@ -15,7 +15,8 @@ use anyhow::Result;
 use anyhow::bail;
 use serde::Deserialize;
 
-/// Local execution settings read from the `[local]` table in `.infra/ci/ci.toml`.
+/// Local execution settings read from the `[local]` table in
+/// `.infra/ci/ci.toml`.
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LocalConfig {
@@ -83,12 +84,9 @@ impl LocalConfig {
         };
         for path in [&config.matrix, &config.hook] {
             if path.is_empty()
-                || Path::new(path).components().any(|part| {
-                    !matches!(
-                        part,
-                        std::path::Component::Normal(_) | std::path::Component::CurDir
-                    )
-                })
+                || Path::new(path)
+                    .components()
+                    .any(|part| !matches!(part, std::path::Component::Normal(_) | std::path::Component::CurDir))
             {
                 bail!("local CI paths must be project-relative: {path}");
             }
@@ -97,23 +95,18 @@ impl LocalConfig {
             .into_iter()
             .flatten()
         {
-            if value.is_empty() || value.starts_with('-') || value.chars().any(char::is_whitespace)
-            {
+            if value.is_empty() || value.starts_with('-') || value.chars().any(char::is_whitespace) {
                 bail!("invalid Cargo toolchain: {value}");
             }
         }
         if config.nightly_toolchain.is_empty()
             || config.nightly_toolchain.starts_with(['+', '-'])
             || config.nightly_toolchain.chars().any(char::is_whitespace)
-            || (config.nightly_toolchain.starts_with("nightly")
-                && !is_pinned_nightly(&config.nightly_toolchain))
+            || (config.nightly_toolchain.starts_with("nightly") && !is_pinned_nightly(&config.nightly_toolchain))
         {
             bail!("nightly_toolchain must be nightly-YYYY-MM-DD or a valid toolchain name");
         }
-        if !matches!(
-            config.fuzz_mode.as_str(),
-            "smoke" | "build-only" | "disabled"
-        ) {
+        if !matches!(config.fuzz_mode.as_str(), "smoke" | "build-only" | "disabled") {
             bail!("fuzz_mode must be smoke, build-only, or disabled");
         }
         if config.fuzz_seconds_per_target == 0 || config.fuzz_max_len == 0 {
