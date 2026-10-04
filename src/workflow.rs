@@ -88,7 +88,7 @@ pub fn jobs(tasks: &[Task], tools: &ToolConfig) -> Result<Vec<JobSpec>> {
         .map(|task| {
             let tool_name = task.executable();
             let tool = tools.tools.get(tool_name).cloned();
-            Ok(JobSpec {
+            let mut job = JobSpec {
                 name: task.to_string(),
                 task: *task,
                 commands: task
@@ -101,7 +101,43 @@ pub fn jobs(tasks: &[Task], tools: &ToolConfig) -> Result<Vec<JobSpec>> {
                     })
                     .collect(),
                 tool,
-            })
+            };
+            if *task == Task::Coverage {
+                let encoded_flags = match std::env::var("CARGO_ENCODED_RUSTFLAGS") {
+                    Ok(mut flags) => {
+                        if !flags.is_empty() {
+                            flags.push('\x1f');
+                        }
+                        flags.push_str("-Clink-dead-code");
+                        Some(flags)
+                    }
+                    Err(std::env::VarError::NotPresent) => None,
+                    Err(std::env::VarError::NotUnicode(_)) => {
+                        bail!("CARGO_ENCODED_RUSTFLAGS must be valid Unicode for coverage")
+                    }
+                };
+                let rust_flags = if let Some(flags) = encoded_flags {
+                    ("CARGO_ENCODED_RUSTFLAGS", flags)
+                } else {
+                    let mut flags = match std::env::var("RUSTFLAGS") {
+                        Ok(flags) => flags,
+                        Err(std::env::VarError::NotPresent) => String::new(),
+                        Err(std::env::VarError::NotUnicode(_)) => {
+                            bail!("RUSTFLAGS must be valid Unicode for coverage")
+                        }
+                    };
+                    if !flags.is_empty() {
+                        flags.push(' ');
+                    }
+                    flags.push_str("-Clink-dead-code");
+                    ("RUSTFLAGS", flags)
+                };
+                for command in &mut job.commands {
+                    command.env.insert("CARGO_INCREMENTAL".into(), "1".into());
+                    command.env.insert(rust_flags.0.into(), rust_flags.1.clone());
+                }
+            }
+            Ok(job)
         })
         .collect()
 }

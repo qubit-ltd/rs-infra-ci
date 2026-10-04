@@ -74,7 +74,7 @@ fn test_coverage_threshold_override_reaches_coverage_collector() {
     script(
         &dir,
         "rs-infra-coverage",
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> calls\ncase \"$*\" in *--ignore-thresholds) exit 0;; *) exit 7;; esac\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> calls\nprintf '%s|%s|%s\\n' \"${CARGO_INCREMENTAL:-}\" \"${RUSTFLAGS:-}\" \"${CARGO_ENCODED_RUSTFLAGS:-}\" >> coverage-env\ncase \"$*\" in *--ignore-thresholds) exit 0;; *) exit 7;; esac\n",
     );
     let strict = run(&dir, "check");
     assert!(!strict.status.success(), "the default must enforce coverage thresholds");
@@ -93,8 +93,36 @@ fn test_coverage_threshold_override_reaches_coverage_collector() {
         .output()
         .expect("run CI with ignored coverage thresholds");
     assert!(ignored.status.success(), "{}", String::from_utf8_lossy(&ignored.stderr));
+    let encoded = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
+        .args([
+            "--project",
+            dir.path().to_str().expect("UTF-8 path"),
+            "--ignore-coverage-thresholds",
+            "check",
+        ])
+        .env(
+            "PATH",
+            format!("{}:{}", dir.path().display(), std::env::var("PATH").expect("PATH")),
+        )
+        .env("CARGO_ENCODED_RUSTFLAGS", "--cfg inherited")
+        .env_remove("RUSTFLAGS")
+        .output()
+        .expect("run CI with encoded Rust flags");
+    assert!(encoded.status.success(), "{}", String::from_utf8_lossy(&encoded.stderr));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("coverage calls");
     assert!(calls.contains("collect --ignore-thresholds"));
+    let coverage_env = fs::read_to_string(dir.path().join("coverage-env")).expect("coverage environment");
+    assert!(
+        coverage_env
+            .lines()
+            .next()
+            .is_some_and(|line| line.starts_with("1|original -Clink-dead-code|")),
+        "coverage must enable incremental compilation and preserve inherited Rust flags: {coverage_env}"
+    );
+    assert!(
+        coverage_env.lines().nth(2).is_some_and(|line| line == "1||--cfg inherited\x1f-Clink-dead-code"),
+        "coverage must append to CARGO_ENCODED_RUSTFLAGS: {coverage_env}"
+    );
 }
 
 #[test]
