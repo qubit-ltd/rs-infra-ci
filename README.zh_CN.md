@@ -113,6 +113,25 @@ Clippy 也使用它。文件路径相对于项目根目录。未知的 `[local]`
 `target/infra-feature-matrix/<name>` 产物目录。进程被强制终止时可能无法恢复；
 不要在同一项目中并发写入锁文件。
 
+可复用的 `github-ci.yml` 默认先校验这份配置，再为每个检查创建独立的
+GitHub Actions job。最多同时运行四项；某项失败后，其他项继续完成。项目可用
+`feature-matrix-enabled: false` 关闭矩阵，或通过
+`feature-matrix-max-parallel` 调整正整数并行上限。启用
+`feature-matrix-prefetch: true` 时，规划 job 只获取一次锁定的依赖，并通过
+本次工作流的 artifact 将 Cargo 下载内容交给各矩阵 job。配置缺失或为空时不创建
+矩阵 job；配置无效时规划失败，Pages 也不会部署。
+
+可以在本地查看生成的 GitHub 矩阵，或只运行其中一项：
+
+```bash
+rs-infra-ci --project . matrix plan --output /tmp/feature-matrix.json
+rs-infra-ci --project . matrix run --check minimal
+```
+
+省略 `--output` 时，`matrix plan` 把 JSON 写到标准输出。超过 GitHub Actions
+的 256 项矩阵上限会报错。`matrix run` 在选中指定项前仍校验整份配置。本地的
+`check --only=feature-matrix` 继续按顺序执行全部检查。
+
 迁移脚本运行 `rs-infra-ci --project . plan` 可以查看完整 job 计划。
 存在各职责目录下的 `tool.toml` 文件（例如 `.infra/ci/tool.toml`）时，计划还会输出每个选中工具的固定 revision
 安装命令：

@@ -14,7 +14,9 @@ use clap::Subcommand;
 use qubit_infra_ci::Config;
 use qubit_infra_ci::Task;
 use qubit_infra_ci::load_config;
+use qubit_infra_ci::plan_github_matrix;
 use qubit_infra_ci::plan_workflow;
+use qubit_infra_ci::run_matrix_check;
 use qubit_infra_ci::run_with_coverage_policy;
 
 /// Command-line arguments for the CI task orchestrator.
@@ -42,6 +44,29 @@ enum Command {
     Plan,
     /// Execute the selected workflow.
     Check,
+    /// Plan or run one configured Cargo feature check.
+    Matrix {
+        /// Matrix operation to perform.
+        #[command(subcommand)]
+        command: MatrixCommand,
+    },
+}
+
+/// GitHub matrix planning and selected execution operations.
+#[derive(Debug, Subcommand)]
+enum MatrixCommand {
+    /// Validate checks and emit a GitHub Actions matrix as JSON.
+    Plan {
+        /// Write the matrix JSON to a file instead of standard output.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Execute one named, fully validated feature check.
+    Run {
+        /// Name of the matrix check to execute.
+        #[arg(long)]
+        check: String,
+    },
 }
 
 /// Parses arguments and executes the requested operation.
@@ -58,19 +83,50 @@ fn execute() -> Result<()> {
     let operation = match &cli.command {
         Command::Plan => "plan",
         Command::Check => "check",
+        Command::Matrix {
+            command: MatrixCommand::Plan { .. },
+        } => "matrix plan",
+        Command::Matrix {
+            command: MatrixCommand::Run { .. },
+        } => "matrix run",
     };
-
-    let result = (|| {
-        let config: Config = load_config(&cli.project)?;
-        let tasks = config.select(&cli.only)?;
-
-        match cli.command {
-            Command::Plan => plan_workflow(&cli.project, &tasks),
-            Command::Check => run_with_coverage_policy(&cli.project, tasks, !cli.ignore_coverage_thresholds),
+    let machine_output = matches!(
+        cli.command,
+        Command::Matrix {
+            command: MatrixCommand::Plan { .. }
         }
+    );
+
+    let result = (|| match cli.command {
+        Command::Plan | Command::Check => {
+            let config: Config = load_config(&cli.project)?;
+            let tasks = config.select(&cli.only)?;
+            if matches!(cli.command, Command::Plan) {
+                plan_workflow(&cli.project, &tasks)
+            } else {
+                run_with_coverage_policy(&cli.project, tasks, !cli.ignore_coverage_thresholds)
+            }
+        }
+        Command::Matrix {
+            command: MatrixCommand::Plan { output },
+        } => {
+            let matrix = plan_github_matrix(&cli.project)?;
+            let mut json = serde_json::to_vec(&matrix)?;
+            json.push(b'\n');
+            if let Some(path) = output {
+                std::fs::write(path, json)?;
+            } else {
+                use std::io::Write;
+                std::io::stdout().write_all(&json)?;
+            }
+            Ok(())
+        }
+        Command::Matrix {
+            command: MatrixCommand::Run { check },
+        } => run_matrix_check(&cli.project, &check),
     })();
 
-    if result.is_ok() {
+    if result.is_ok() && !machine_output {
         println!("✅ rs-infra-ci: {operation} succeeded");
     }
     result.map_err(|error| anyhow::anyhow!("❌ rs-infra-ci: {operation} failed: {error:#}"))

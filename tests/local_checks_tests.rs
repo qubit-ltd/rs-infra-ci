@@ -67,6 +67,119 @@ fn run(dir: &TempDir, operation: &str) -> Output {
         .expect("CLI")
 }
 
+/// Runs a matrix subcommand against the fixture with its fake Cargo executable.
+fn run_matrix(dir: &TempDir, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
+        .args(["--project", dir.path().to_str().expect("UTF-8 path"), "matrix"])
+        .args(args)
+        .env(
+            "PATH",
+            format!("{}:{}", dir.path().display(), std::env::var("PATH").expect("PATH")),
+        )
+        .output()
+        .expect("matrix CLI")
+}
+
+#[test]
+fn test_matrix_plan_writes_validated_github_matrix() {
+    let dir = fixture("tasks = ['feature-matrix']\n");
+    fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), r#"{"version":1,"checks":[{"name":"default","commands":["check"]},{"name":"lint","commands":["clippy","test"]}]}"#).expect("matrix");
+    let output_path = dir.path().join("matrix-output.json");
+    let output = run_matrix(&dir, &["plan", "--output", output_path.to_str().expect("UTF-8 path")]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.stdout.is_empty(),
+        "machine-readable plan should not print a banner"
+    );
+    let matrix: serde_json::Value =
+        serde_json::from_slice(&fs::read(output_path).expect("matrix output")).expect("valid JSON");
+    assert_eq!(
+        matrix,
+        serde_json::json!({"include":[{"name":"default","needs_clippy":false},{"name":"lint","needs_clippy":true}]})
+    );
+
+    fs::write(
+        dir.path().join(".infra/ci/cargo-matrix.json"),
+        r#"{"version":1,"checks":[]}"#,
+    )
+    .expect("empty matrix");
+    let empty = run_matrix(&dir, &["plan"]);
+    assert!(empty.status.success(), "{}", String::from_utf8_lossy(&empty.stderr));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&empty.stdout).expect("empty JSON"),
+        serde_json::json!({"include":[]})
+    );
+
+    fs::write(
+        dir.path().join(".infra/ci/cargo-matrix.json"),
+        r#"{"version":1,"checks":[{"name":"same","commands":["check"]},{"name":"same","commands":["test"]}]}"#,
+    )
+    .expect("invalid matrix");
+    let invalid = run_matrix(&dir, &["plan"]);
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("duplicate matrix check name"));
+}
+
+#[test]
+fn test_matrix_run_selects_one_check_and_restores_lock_on_failure() {
+    let dir = fixture("tasks = ['feature-matrix']\n");
+    fs::write(dir.path().join("Cargo.lock"), "baseline").expect("lock");
+    fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), r#"{"version":1,"checks":[{"name":"plain","commands":["check"]},{"name":"dependency","commands":["test"],"dependency":{"name":"dep","resolution":"precise","version":"1.2.3"}}]}"#).expect("matrix");
+
+    let plain = run_matrix(&dir, &["run", "--check", "plain"]);
+    assert!(plain.status.success(), "{}", String::from_utf8_lossy(&plain.stderr));
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
+    assert!(calls.contains("check --workspace"));
+    assert!(!calls.contains("update --package dep"));
+
+    let unknown = run_matrix(&dir, &["run", "--check", "missing"]);
+    assert!(!unknown.status.success());
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("unknown matrix check"));
+    assert_eq!(fs::read_to_string(dir.path().join("calls")).expect("calls"), calls);
+
+    fs::write(dir.path().join("fail"), "").expect("failure marker");
+    let failed = run_matrix(&dir, &["run", "--check", "dependency"]);
+    assert!(!failed.status.success());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("Cargo.lock")).expect("restored lock"),
+        "baseline"
+    );
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
+    assert!(calls.contains("update --package dep --precise 1.2.3"));
+    assert!(calls.contains("test --workspace --locked"));
+}
+
+#[test]
+fn test_matrix_plan_rejects_more_than_github_job_limit() {
+    let dir = fixture("tasks = ['feature-matrix']\n");
+    let checks: Vec<_> = (0..257)
+        .map(|index| serde_json::json!({"name": format!("check-{index}"), "commands": ["check"]}))
+        .collect();
+    fs::write(
+        dir.path().join(".infra/ci/cargo-matrix.json"),
+        serde_json::to_vec(&serde_json::json!({"version": 1, "checks": checks})).expect("matrix JSON"),
+    )
+    .expect("matrix");
+
+    let output = run_matrix(&dir, &["plan"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("at most 256"));
+}
+
+#[test]
+fn test_matrix_run_validates_all_checks_before_executing_selected_one() {
+    let dir = fixture("tasks = ['feature-matrix']\n");
+    fs::write(
+        dir.path().join(".infra/ci/cargo-matrix.json"),
+        r#"{"version":1,"checks":[{"name":"first","commands":["check"]},{"name":"broken","commands":["unknown"]}]}"#,
+    )
+    .expect("matrix");
+    let output = run_matrix(&dir, &["run", "--check", "first"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid matrix commands"));
+    assert!(!dir.path().join("calls").exists());
+}
+
 /// Verifies the opt-in coverage flag reaches only the coverage subprocess.
 #[test]
 fn test_coverage_threshold_override_reaches_coverage_collector() {
@@ -120,7 +233,10 @@ fn test_coverage_threshold_override_reaches_coverage_collector() {
         "coverage must enable incremental compilation and preserve inherited Rust flags: {coverage_env}"
     );
     assert!(
-        coverage_env.lines().nth(2).is_some_and(|line| line == "1||--cfg inherited\x1f-Clink-dead-code"),
+        coverage_env
+            .lines()
+            .nth(2)
+            .is_some_and(|line| line == "1||--cfg inherited\x1f-Clink-dead-code"),
         "coverage must append to CARGO_ENCODED_RUSTFLAGS: {coverage_env}"
     );
 }

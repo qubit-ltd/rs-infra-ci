@@ -119,6 +119,28 @@ Each check uses `target/infra-feature-matrix/<name>` for isolated artifacts.
 Abrupt process termination can prevent restoration; do not run concurrent
 lockfile writers in the same project.
 
+The reusable `github-ci.yml` validates this file and runs each check as a
+separate GitHub Actions job by default. It runs at most four checks at once and
+lets other checks finish when one fails. Projects may set
+`feature-matrix-enabled: false` to skip the matrix or set
+`feature-matrix-max-parallel` to another positive limit. With
+`feature-matrix-prefetch: true`, the planning job fetches locked dependencies
+once and shares the downloaded Cargo sources with the matrix jobs through a
+workflow artifact. Missing or empty matrices create no matrix jobs; invalid
+matrices fail planning and block Pages deployment.
+
+To inspect the generated GitHub matrix or run a single check locally:
+
+```bash
+rs-infra-ci --project . matrix plan --output /tmp/feature-matrix.json
+rs-infra-ci --project . matrix run --check minimal
+```
+
+`matrix plan` prints JSON to standard output when `--output` is omitted. It
+rejects more than 256 checks, the GitHub Actions matrix job limit. `matrix run`
+validates the complete configuration before selecting a check. The ordinary
+`check --only=feature-matrix` command still runs every check in order locally.
+
 Migration scripts can run `rs-infra-ci --project . plan` to inspect the complete
 job plan. When per-tool configuration files such as `.infra/ci/tool.toml` are present, the plan also includes the
 revision-pinned installation command for every selected tool:

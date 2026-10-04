@@ -35,6 +35,14 @@ on:
         description: Fetch locked dependencies before the feature matrix
         type: boolean
         default: false
+      feature-matrix-enabled:
+        description: Validate and run the configured feature matrix
+        type: boolean
+        default: true
+      feature-matrix-max-parallel:
+        description: Maximum number of concurrent feature matrix checks
+        type: number
+        default: 4
       derive-coverage:
         description: Run derive macro coverage checks and require them for Pages
         type: boolean
@@ -113,8 +121,61 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  feature-matrix:
+  feature-matrix-plan:
+    if: inputs.feature-matrix-enabled
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has-checks: ${{ steps.plan.outputs.has-checks }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Prepare local path dependencies
+        run: ./.infra/bin/prepare-local-path-dependencies.sh
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.94
+      - name: Validate and plan feature matrix
+        id: plan
+        run: |
+          ./.infra/bin/infra-tool.sh rs-infra-ci --project "$GITHUB_WORKSPACE" matrix plan --output "$RUNNER_TEMP/feature-matrix.json"
+          echo "matrix=$(jq -c . "$RUNNER_TEMP/feature-matrix.json")" >> "$GITHUB_OUTPUT"
+          if [ "$(jq '.include | length' "$RUNNER_TEMP/feature-matrix.json")" -gt 0 ]; then
+            echo 'has-checks=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'has-checks=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Fetch locked dependencies for feature matrix
+        if: inputs.feature-matrix-prefetch && steps.plan.outputs.has-checks == 'true'
+        run: cargo +1.94.0 fetch --locked
+      - name: Package matrix runner and prefetched dependencies
+        if: steps.plan.outputs.has-checks == 'true'
+        run: |
+          tar -czf "$RUNNER_TEMP/rs-infra-ci.tar.gz" -C .infra/ci/bin rs-infra-ci
+          if [ '${{ inputs.feature-matrix-prefetch }}' = 'true' ]; then
+            cargo_home_dir="${CARGO_HOME:-$HOME/.cargo}"
+            mkdir -p "$cargo_home_dir/registry" "$cargo_home_dir/git"
+            tar -czf "$RUNNER_TEMP/cargo-sources.tar.gz" -C "$cargo_home_dir" registry git
+          fi
+      - name: Upload matrix runner and dependencies
+        if: steps.plan.outputs.has-checks == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: feature-matrix-runner
+          path: |
+            ${{ runner.temp }}/rs-infra-ci.tar.gz
+            ${{ runner.temp }}/cargo-sources.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  feature-matrix:
+    if: needs.feature-matrix-plan.outputs.has-checks == 'true'
+    needs: [feature-matrix-plan]
+    name: Feature matrix (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ inputs.feature-matrix-max-parallel }}
+      matrix: ${{ fromJSON(needs.feature-matrix-plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Prepare local path dependencies
@@ -125,17 +186,24 @@ jobs:
       - name: Install matrix build toolchain
         run: rustup toolchain install 1.94.0 --profile minimal
       - name: Install matrix Clippy toolchain when required
+        if: matrix.needs_clippy
+        run: rustup toolchain install nightly-2026-06-05 --profile minimal --component clippy
+      - uses: actions/download-artifact@v8
+        with:
+          name: feature-matrix-runner
+          path: ${{ runner.temp }}/feature-matrix-runner
+      - name: Restore matrix runner and prefetched dependencies
         run: |
-          if jq -e 'any(.checks[]; (.commands | index("clippy")) != null)' \
-              .infra/ci/cargo-matrix.json >/dev/null; then
-            rustup toolchain install nightly-2026-06-05 --profile minimal --component clippy
+          tar -xzf "$RUNNER_TEMP/feature-matrix-runner/rs-infra-ci.tar.gz" -C "$RUNNER_TEMP/feature-matrix-runner"
+          if [ -f "$RUNNER_TEMP/feature-matrix-runner/cargo-sources.tar.gz" ]; then
+            cargo_home_dir="${CARGO_HOME:-$HOME/.cargo}"
+            mkdir -p "$cargo_home_dir"
+            tar -xzf "$RUNNER_TEMP/feature-matrix-runner/cargo-sources.tar.gz" -C "$cargo_home_dir"
           fi
-      - name: Fetch locked dependencies for feature matrix
-        if: inputs.feature-matrix-prefetch
-        run: cargo +1.94.0 fetch --locked
-      - name: Run configured feature and dependency matrix
-        run: |
-          ./.infra/bin/ci-check.sh --only=feature-matrix
+      - name: Run selected feature matrix check
+        env:
+          MATRIX_CHECK: ${{ matrix.name }}
+        run: '"$RUNNER_TEMP/feature-matrix-runner/rs-infra-ci" --project "$GITHUB_WORKSPACE" matrix run --check "$MATRIX_CHECK"'
 
   coverage:
     needs: [verify]
@@ -225,8 +293,8 @@ jobs:
           if-no-files-found: error
 
   pages:
-    if: ${{ always() && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.verify.result == 'success' && needs.coverage.result == 'success' && (needs.feature-matrix.result == 'success' || needs.feature-matrix.result == 'skipped') && (needs.derive-coverage.result == 'success' || (!inputs.derive-coverage && needs.derive-coverage.result == 'skipped')) }}
-    needs: [verify, feature-matrix, coverage, derive-coverage]
+    if: ${{ always() && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.verify.result == 'success' && needs.coverage.result == 'success' && (needs.feature-matrix-plan.result == 'success' || (!inputs.feature-matrix-enabled && needs.feature-matrix-plan.result == 'skipped')) && (needs.feature-matrix.result == 'success' || needs.feature-matrix.result == 'skipped') && (needs.derive-coverage.result == 'success' || (!inputs.derive-coverage && needs.derive-coverage.result == 'skipped')) }}
+    needs: [verify, feature-matrix-plan, feature-matrix, coverage, derive-coverage]
     outputs:
       deploy: ${{ steps.pages-config.outputs.deploy }}
     runs-on: ubuntu-latest

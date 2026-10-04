@@ -16,6 +16,7 @@ use anyhow::Result;
 use anyhow::bail;
 use serde_json::Value;
 use serde_json::from_slice;
+use serde_json::json;
 
 use crate::CommandSpec;
 use crate::local;
@@ -217,11 +218,55 @@ pub(crate) fn plan(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSp
         .map(|groups| groups.into_iter().flatten().collect())
 }
 
+/// Builds a GitHub Actions matrix from the fully validated project checks.
+///
+/// The output contains only checked names and whether a job needs Clippy.
+/// An empty configuration produces an empty `include` list. More than 256
+/// entries are rejected because GitHub Actions cannot schedule them.
+pub(crate) fn github_plan(project: &Path, config: &LocalConfig) -> Result<Value> {
+    let checks = checks(project, config)?;
+    if checks.len() > 256 {
+        bail!(
+            "feature matrix has {} checks; GitHub Actions supports at most 256",
+            checks.len()
+        );
+    }
+    let include: Vec<Value> = checks
+        .iter()
+        .map(|check| {
+            let needs_clippy = check["commands"]
+                .as_array()
+                .is_some_and(|commands| commands.iter().any(|command| command == "clippy"));
+            json!({"name": check["name"], "needs_clippy": needs_clippy})
+        })
+        .collect();
+    Ok(json!({"include": include}))
+}
+
 /// Runs matrix checks sequentially, restoring the entry lockfile even on
 /// command failure. Dependency metadata must resolve exactly one matching
 /// version before tests start.
 pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
-    let checks = checks(project, config)?;
+    run_selected(project, config, None)
+}
+
+/// Runs one named check after validating the entire matrix configuration.
+///
+/// Returns an error when the name is absent or any matrix entry is invalid.
+pub(crate) fn run_one(project: &Path, config: &LocalConfig, name: &str) -> Result<()> {
+    run_selected(project, config, Some(name))
+}
+
+/// Executes all checks or one selected check with the same lockfile handling.
+fn run_selected(project: &Path, config: &LocalConfig, name: Option<&str>) -> Result<()> {
+    let mut checks = checks(project, config)?;
+    if let Some(name) = name {
+        let check = checks
+            .into_iter()
+            .find(|check| check["name"] == name)
+            .with_context(|| format!("unknown matrix check: {name}"))?;
+        checks = vec![check];
+    }
     let lock = project.join("Cargo.lock");
     let baseline = match std::fs::read(&lock) {
         Ok(bytes) => Some(bytes),
@@ -279,4 +324,25 @@ pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
         result?;
     }
     Ok(())
+}
+
+/// Plans the project's validated feature checks as a GitHub Actions matrix.
+///
+/// Missing or empty matrix files yield an empty `include` list. Invalid
+/// configuration, an invalid project directory, or more than 256 checks fail.
+pub fn plan_github_matrix(project: &Path) -> Result<Value> {
+    let project = project.canonicalize().context("invalid project directory")?;
+    let config = LocalConfig::load(&project)?;
+    github_plan(&project, &config)
+}
+
+/// Runs one validated feature check in the project directory.
+///
+/// The selected check may run Cargo and temporarily modify Cargo.lock for a
+/// dependency scenario. The lockfile is restored on normal success or error.
+/// Invalid configuration, an unknown name, or a failed command return errors.
+pub fn run_matrix_check(project: &Path, name: &str) -> Result<()> {
+    let project = project.canonicalize().context("invalid project directory")?;
+    let config = LocalConfig::load(&project)?;
+    run_one(&project, &config, name)
 }

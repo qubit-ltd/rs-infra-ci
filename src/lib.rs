@@ -22,6 +22,8 @@ mod workflow;
 pub use command_spec::CommandSpec;
 pub use config::Config;
 pub use job_spec::JobSpec;
+pub use matrix::plan_github_matrix;
+pub use matrix::run_matrix_check;
 pub use task::Task;
 pub use tool_config::ToolConfig;
 pub use tool_spec::ToolSpec;
