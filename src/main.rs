@@ -60,6 +60,9 @@ enum MatrixCommand {
         /// Write the matrix JSON to a file instead of standard output.
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Copy the running, dynamically resolved binary to this path.
+        #[arg(long)]
+        runner_output: Option<PathBuf>,
     },
     /// Execute one named, fully validated feature check.
     Run {
@@ -108,7 +111,11 @@ fn execute() -> Result<()> {
             }
         }
         Command::Matrix {
-            command: MatrixCommand::Plan { output },
+            command:
+                MatrixCommand::Plan {
+                    output,
+                    runner_output,
+                },
         } => {
             let matrix = plan_github_matrix(&cli.project)?;
             let mut json = serde_json::to_vec(&matrix)?;
@@ -118,6 +125,15 @@ fn execute() -> Result<()> {
             } else {
                 use std::io::Write;
                 std::io::stdout().write_all(&json)?;
+            }
+            if let Some(path) = runner_output {
+                if let Some(parent) = path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(std::env::current_exe()?, path)?;
             }
             Ok(())
         }

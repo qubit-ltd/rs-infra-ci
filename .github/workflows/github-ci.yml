@@ -137,7 +137,9 @@ jobs:
       - name: Validate and plan feature matrix
         id: plan
         run: |
-          ./.infra/bin/infra-tool.sh rs-infra-ci --project "$GITHUB_WORKSPACE" matrix plan --output "$RUNNER_TEMP/feature-matrix.json"
+          ./.infra/bin/infra-tool.sh rs-infra-ci --project "$GITHUB_WORKSPACE" matrix plan \
+            --output "$RUNNER_TEMP/feature-matrix.json" \
+            --runner-output "$RUNNER_TEMP/rs-infra-ci/rs-infra-ci"
           echo "matrix=$(jq -c . "$RUNNER_TEMP/feature-matrix.json")" >> "$GITHUB_OUTPUT"
           if [ "$(jq '.include | length' "$RUNNER_TEMP/feature-matrix.json")" -gt 0 ]; then
             echo 'has-checks=true' >> "$GITHUB_OUTPUT"
@@ -150,7 +152,7 @@ jobs:
       - name: Package matrix runner and prefetched dependencies
         if: steps.plan.outputs.has-checks == 'true'
         run: |
-          tar -czf "$RUNNER_TEMP/rs-infra-ci.tar.gz" -C .infra/ci/bin rs-infra-ci
+          tar -czf "$RUNNER_TEMP/rs-infra-ci.tar.gz" -C "$RUNNER_TEMP/rs-infra-ci" rs-infra-ci
           if [ '${{ inputs.feature-matrix-prefetch }}' = 'true' ]; then
             cargo_home_dir="${CARGO_HOME:-$HOME/.cargo}"
             mkdir -p "$cargo_home_dir/registry" "$cargo_home_dir/git"
