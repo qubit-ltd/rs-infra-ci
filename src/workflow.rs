@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -19,50 +18,27 @@ use crate::Config;
 use crate::JobSpec;
 use crate::Task;
 use crate::ToolConfig;
-use crate::ToolSpec;
 use crate::config::validate_unique;
 use crate::local;
 use crate::local_config::LocalConfig;
 
-/// Loads revision-pinned tool specifications from a project.
+/// Returns an empty tool specification set because tools are resolved by the
+/// shared runtime before this workflow starts.
 ///
 /// # Parameters
 ///
-/// * `project` - The project root containing per-tool `tool.toml` files.
+/// * `project` - The project root (retained for API compatibility).
 ///
 /// # Returns
 ///
-/// The parsed tool configuration, or an empty configuration when no tool
-/// configuration files are present.
+/// An empty configuration; no tool pins are stored in project repositories.
 ///
 /// # Errors
 ///
-/// Returns an error when the file cannot be read, parsed, or contains a
-/// revision that is not a full hexadecimal Git SHA.
+/// This operation currently cannot fail.
 pub fn load_tools(project: &Path) -> Result<ToolConfig> {
-    let mut tools = BTreeMap::new();
-    for (name, directory) in [
-        ("rs-infra-ci", "ci"),
-        ("rs-infra-coverage", "coverage"),
-        ("rs-infra-dependency", "dependency"),
-        ("rs-infra-pages", "pages"),
-        ("rs-infra-style", "style"),
-        ("rs-infra-verify", "verify"),
-    ] {
-        let path = project.join(format!(".infra/{directory}/tool.toml"));
-        if !path.is_file() {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
-        let tool: ToolSpec = ::toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
-        tools.insert(name.to_owned(), tool);
-    }
-    for (name, tool) in &tools {
-        if tool.revision.len() != 40 || !tool.revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            bail!("tool '{name}' revision must be a 40-character hexadecimal Git SHA");
-        }
-    }
-    Ok(ToolConfig { tools })
+    let _ = project;
+    Ok(ToolConfig::default())
 }
 
 /// Builds workflow jobs for the selected tasks and installed tools.

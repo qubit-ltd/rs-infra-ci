@@ -462,15 +462,23 @@ fn test_invalid_matrix_fails_before_any_command() {
 }
 
 #[test]
-fn test_malformed_tool_configuration_fails_before_any_command() {
-    let dir = fixture("tasks = ['verify']\n");
+fn test_malformed_project_tool_pin_is_ignored_by_dynamic_resolution() {
+    let dir = fixture("tasks = ['feature-matrix']\n");
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("tool directory");
+    fs::write(
+        dir.path().join(".infra/ci/cargo-matrix.json"),
+        r#"{"version":1,"checks":[]}"#,
+    )
+    .expect("empty matrix");
     fs::write(dir.path().join(".infra/ci/tool.toml"), "revision = [\n").expect("tool configuration");
 
     let output = run(&dir, "check");
 
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("failed to parse"));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(!dir.path().join("calls").exists());
 }
 

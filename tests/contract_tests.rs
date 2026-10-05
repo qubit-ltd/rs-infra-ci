@@ -32,7 +32,7 @@ fn verify_job_contains_lock_and_all_verification_suites() {
 }
 
 #[test]
-fn all_migration_tasks_have_pinned_install_information() {
+fn workflow_tasks_do_not_require_project_tool_pins() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/dependency")).expect("dependency directory");
     fs::write(
@@ -48,26 +48,11 @@ package = "qubit-infra-dependency"
 
     let tools = load_tools(project.path()).expect("tools load");
     let workflow = jobs(&[Task::Dependency], &tools).expect("workflow jobs");
-    let tool = workflow[0].tool.as_ref().expect("dependency tool");
-
-    assert_eq!(
-        tool.install_args(),
-        vec![
-            "install",
-            "--git",
-            "https://example.invalid/dependency.git",
-            "--rev",
-            "0123456789abcdef0123456789abcdef01234567",
-            "--locked",
-            "qubit-infra-dependency",
-            "--bin",
-            "rs-infra-dependency",
-        ]
-    );
+    assert!(workflow[0].tool.is_none());
 }
 
 #[test]
-fn invalid_tool_revision_is_rejected() {
+fn invalid_tool_pin_is_ignored_by_dynamic_workflow_resolution() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/style")).expect("style directory");
     fs::write(
@@ -76,7 +61,7 @@ fn invalid_tool_revision_is_rejected() {
     )
     .expect("tool configuration");
 
-    assert!(load_tools(project.path()).is_err());
+    assert!(load_tools(project.path()).expect("dynamic tool config").tools.is_empty());
 }
 
 #[test]
