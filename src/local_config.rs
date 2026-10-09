@@ -6,7 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-//! Project-owned options for local checks.
+//! Project-specific CI options combined with installed shared tool versions.
 
 use std::path::Path;
 
@@ -15,8 +15,8 @@ use anyhow::Result;
 use anyhow::bail;
 use serde::Deserialize;
 
-/// Local execution settings read from the `[local]` table in
-/// `.infra/ci/ci.toml`.
+/// Local execution settings assembled from the project `[local]` table and
+/// the installed `.infra/ci/defaults.toml`.
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LocalConfig {
@@ -44,18 +44,41 @@ pub(crate) struct LocalConfig {
     pub hook: String,
 }
 
+/// Shared tool versions installed from `rs-infra-ci/conf/defaults.toml`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SharedDefaults {
+    /// Cargo toolchain used for build commands and audit.
+    build_toolchain: String,
+    /// Cargo toolchain used for Clippy.
+    clippy_toolchain: String,
+    /// Nightly toolchain used for Miri, sanitizers, and fuzz verification.
+    nightly_toolchain: String,
+    /// Exact cargo-fuzz version.
+    fuzz_version: String,
+}
+
+impl SharedDefaults {
+    /// Reads the project-installed shared settings; missing or invalid files fail.
+    fn load(project: &Path) -> Result<Self> {
+        let path = project.join(".infra/ci/defaults.toml");
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}; run ./update-infra.sh", path.display()))?;
+        toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
+    }
+}
+
 impl Default for LocalConfig {
-    /// Uses current Cargo toolchains, the standard paths, and legacy audit
-    /// fallback.
+    /// Uses project-specific defaults until shared versions are loaded.
     fn default() -> Self {
         Self {
             build_toolchain: None,
             clippy_toolchain: None,
-            nightly_toolchain: "nightly-2026-06-05".into(),
+            nightly_toolchain: String::new(),
             fuzz_mode: "smoke".into(),
             fuzz_seconds_per_target: 10,
             fuzz_max_len: 4096,
-            fuzz_version: "0.13.2".into(),
+            fuzz_version: String::new(),
             coverage_cfg_clippy: false,
             audit_cached_fallback: true,
             matrix: ".infra/ci/cargo-matrix.json".into(),
@@ -69,19 +92,37 @@ impl LocalConfig {
     /// project.
     pub(crate) fn load(project: &Path) -> Result<Self> {
         let path = project.join(".infra/ci/ci.toml");
-        let config = if path.exists() {
+        let document: Option<toml::Value> = if path.exists() {
             let text = std::fs::read_to_string(&path)?;
-            let document: toml::Value = toml::from_str(&text)?;
-            document
-                .get("local")
-                .cloned()
-                .map(toml::Value::try_into)
-                .transpose()
-                .context("invalid [local] CI configuration")?
-                .unwrap_or_default()
+            Some(toml::from_str(&text)?)
         } else {
-            Self::default()
+            None
         };
+        let local = document.as_ref().and_then(|value| value.get("local"));
+        let mut config: Self = local
+            .cloned()
+            .map(toml::Value::try_into)
+            .transpose()
+            .context("invalid [local] CI configuration")?
+            .unwrap_or_default();
+        let shared = SharedDefaults::load(project)?;
+        for (key, expected) in [
+            ("build_toolchain", shared.build_toolchain.as_str()),
+            ("clippy_toolchain", shared.clippy_toolchain.as_str()),
+            ("nightly_toolchain", shared.nightly_toolchain.as_str()),
+            ("fuzz_version", shared.fuzz_version.as_str()),
+        ] {
+            if local
+                .and_then(|value| value.get(key))
+                .is_some_and(|value| value.as_str() != Some(expected))
+            {
+                bail!("{key} is managed by .infra/ci/defaults.toml; remove the project override");
+            }
+        }
+        config.build_toolchain = Some(shared.build_toolchain);
+        config.clippy_toolchain = Some(shared.clippy_toolchain);
+        config.nightly_toolchain = shared.nightly_toolchain;
+        config.fuzz_version = shared.fuzz_version;
         for path in [&config.matrix, &config.hook] {
             if path.is_empty()
                 || Path::new(path)

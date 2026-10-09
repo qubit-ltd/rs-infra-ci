@@ -23,7 +23,7 @@ From a Rust project root:
 cargo run --manifest-path /path/to/rs-infra-ci/Cargo.toml -- --help
 ```
 
-The project's `.infra` configuration remains the source of truth; this tool does not copy project configuration into the tool repository.
+The project's `.infra` configuration remains the source of truth. Run `./update-infra.sh` to install the shared `.infra/ci/defaults.toml` from this repository's `main` branch before using the tool. The task list and project-specific options remain in `.infra/ci/ci.toml`.
 
 ## Workflow contract
 
@@ -49,26 +49,24 @@ tasks = ["style", "clippy", "coverage-cfg-clippy", "verify", "feature-matrix",
          "project-hook", "package", "coverage", "audit"]
 
 [local]
-build_toolchain = "1.94.0"
-clippy_toolchain = "nightly-2026-06-05"
 coverage_cfg_clippy = false
 # Set false when CI must use current advisory data without a cached fallback.
 audit_cached_fallback = true
 matrix = ".infra/ci/cargo-matrix.json"
 hook = "project-ci-check.sh"
 # Add configured suites to `tasks` when the project opts in to them.
-nightly_toolchain = "nightly-2026-06-05"
 fuzz_mode = "smoke"
 fuzz_seconds_per_target = 10
 fuzz_max_len = 4096
-fuzz_version = "0.13.2"
 ```
 
-The toolchain keys are optional: omission uses the active Cargo toolchain.
-Clippy falls back to `build_toolchain` when only that key is specified.
-Paths are relative to the project root. Unknown `[local]` keys and invalid
-configuration fail before execution. Options come from `.infra`, not legacy
-`RS_CI_*` or `RUN_COVERAGE_CFG_CLIPPY` variables.
+The shared `.infra/ci/defaults.toml` supplies `build_toolchain`,
+`clippy_toolchain`, `nightly_toolchain`, and `fuzz_version`. Project copies of
+these values may remain during migration only when they match the installed
+defaults; a different value fails validation. Paths are relative to the
+project root. Unknown `[local]` keys and invalid configuration fail before
+execution. Options come from `.infra`, not legacy `RS_CI_*` or
+`RUN_COVERAGE_CFG_CLIPPY` variables.
 
 | Task | Executed behavior |
 | --- | --- |

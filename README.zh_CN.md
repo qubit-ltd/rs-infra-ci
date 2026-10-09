@@ -23,7 +23,7 @@ cargo install --git https://github.com/qubit-ltd/rs-infra-ci.git --locked qubit-
 cargo run --manifest-path /path/to/rs-infra-ci/Cargo.toml -- --help
 ```
 
-项目的 `.infra` 配置仍然是行为的唯一来源；工具仓库不会复制项目配置。具体策略由项目配置决定。
+项目的 `.infra` 配置仍然是行为的唯一来源。使用工具前运行 `./update-infra.sh`，从本仓库 `main` 分支安装公共的 `.infra/ci/defaults.toml`。任务清单和项目专属参数仍放在 `.infra/ci/ci.toml`。
 
 ## 工作流契约
 
@@ -47,23 +47,20 @@ tasks = ["style", "clippy", "coverage-cfg-clippy", "verify", "feature-matrix",
          "project-hook", "package", "coverage", "audit"]
 
 [local]
-build_toolchain = "1.94.0"
-clippy_toolchain = "nightly-2026-06-05"
 coverage_cfg_clippy = false
 # CI 必须使用最新漏洞库、不允许缓存回退时，设为 false。
 audit_cached_fallback = true
 matrix = ".infra/ci/cargo-matrix.json"
 hook = "project-ci-check.sh"
 # 项目启用相应配置时，将高级任务加入 `tasks`。
-nightly_toolchain = "nightly-2026-06-05"
 fuzz_mode = "smoke"
 fuzz_seconds_per_target = 10
 fuzz_max_len = 4096
-fuzz_version = "0.13.2"
 ```
 
-工具链配置可省略，省略时使用当前 Cargo 工具链；只配置 `build_toolchain` 时，
-Clippy 也使用它。文件路径相对于项目根目录。未知的 `[local]` 配置项或无效配置
+公共的 `.infra/ci/defaults.toml` 提供 `build_toolchain`、`clippy_toolchain`、
+`nightly_toolchain` 和 `fuzz_version`。迁移期间，项目中保留相同的旧值仍可运行；
+不同值会校验失败。文件路径相对于项目根目录。未知的 `[local]` 配置项或无效配置
 会在执行前报错。选项来自 `.infra`，不读取旧的 `RS_CI_*` 或
 `RUN_COVERAGE_CFG_CLIPPY` 环境变量。
 

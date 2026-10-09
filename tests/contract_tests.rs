@@ -128,6 +128,11 @@ fn project_workflow_uses_ci_configuration_and_can_be_planned() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/ci")).expect("CI directory");
     fs::write(project.path().join(".infra/ci/ci.toml"), "tasks = ['style']\n").expect("CI configuration");
+    fs::write(
+        project.path().join(".infra/ci/defaults.toml"),
+        include_str!("../conf/defaults.toml"),
+    )
+    .expect("shared defaults");
 
     let config = load_config(project.path()).expect("CI configuration loads");
     assert_eq!(config.tasks, [Task::Style]);

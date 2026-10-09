@@ -23,10 +23,17 @@ fn fixture(config: &str) -> TempDir {
     let dir = tempdir().expect("fixture");
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("configuration directory");
     fs::write(dir.path().join(".infra/ci/ci.toml"), config).expect("configuration");
+    fs::write(
+        dir.path().join(".infra/ci/defaults.toml"),
+        include_str!("../conf/defaults.toml"),
+    )
+    .expect("shared defaults");
     script(
         &dir,
         "cargo",
         r#"#!/bin/sh
+printf '%s|%s|%s|%s\n' "$*" "$RUSTFLAGS" "$RUSTDOCFLAGS" "$CARGO_TARGET_DIR" >> "$PWD/raw-calls"
+case "$1" in +*) shift;; esac
 printf '%s|%s|%s|%s\n' "$*" "$RUSTFLAGS" "$RUSTDOCFLAGS" "$CARGO_TARGET_DIR" >> "$PWD/calls"
 if [ "$1" = audit ] && [ -f audit-network ]; then
   case "$*" in *--no-fetch*) exit 0;; esac
@@ -364,8 +371,9 @@ fn test_advanced_suites_prepare_tools_and_forward_suite_configuration() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
     assert!(calls.contains("fuzz --version"));
-    assert!(calls.contains("+nightly-2026-06-05 miri setup"));
-    assert!(!calls.contains("+1.94.0 +nightly-2026-06-05 miri setup"));
+    let raw_calls = fs::read_to_string(dir.path().join("raw-calls")).expect("raw Cargo calls");
+    assert!(raw_calls.contains("+nightly-2026-06-05 miri setup"));
+    assert!(!raw_calls.contains("+1.94.0 +nightly-2026-06-05 miri setup"));
     let rustup_calls = fs::read_to_string(dir.path().join("rustup-calls")).expect("rustup calls");
     assert!(rustup_calls.contains("toolchain install nightly-2026-06-05"));
     let verify_calls = fs::read_to_string(dir.path().join("verify-calls")).expect("suite calls");
@@ -389,7 +397,7 @@ fn test_strict_docs_readme_and_release_build_keep_legacy_local_checks() {
     let output = run(&dir, "check");
 
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    let calls = fs::read_to_string(dir.path().join("calls")).expect("Cargo calls");
+    let calls = fs::read_to_string(dir.path().join("raw-calls")).expect("Cargo calls");
     assert_eq!(
         calls
             .lines()
@@ -499,6 +507,29 @@ fn test_invalid_local_configuration_fails_before_any_command() {
 }
 
 #[test]
+fn test_missing_shared_defaults_fails_before_any_command() {
+    let dir = fixture("tasks = ['clippy']\n");
+    fs::remove_file(dir.path().join(".infra/ci/defaults.toml")).expect("remove shared defaults");
+
+    let output = run(&dir, "check");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("run ./update-infra.sh"));
+    assert!(!dir.path().join("calls").exists());
+}
+
+#[test]
+fn test_project_cannot_override_shared_toolchain() {
+    let dir = fixture("tasks = ['clippy']\n[local]\nclippy_toolchain = 'nightly-2026-10-01'\n");
+
+    let output = run(&dir, "check");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("managed by .infra/ci/defaults.toml"));
+    assert!(!dir.path().join("calls").exists());
+}
+
+#[test]
 fn test_audit_cache_fallback_can_be_disabled() {
     let dir = fixture("tasks = ['audit']\n[local]\naudit_cached_fallback = false\n");
     fs::write(dir.path().join("audit-network"), "").expect("marker");
@@ -529,7 +560,7 @@ fn test_relative_project_and_selected_toolchain_are_used() {
         .output()
         .expect("CLI");
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
+    let calls = fs::read_to_string(dir.path().join("raw-calls")).expect("raw calls");
     assert!(calls.contains("+nightly-2026-06-05 clippy"));
     assert!(calls.contains("+1.94.0 audit"));
 }
@@ -562,7 +593,7 @@ fn test_plan_and_check_include_the_same_matrix_commands_without_plan_side_effect
     assert!(plan.status.success());
     assert!(!dir.path().join("calls").exists());
     let plan = String::from_utf8_lossy(&plan.stdout);
-    assert!(plan.contains("cargo clippy --all-targets --workspace --all-features -- -D warnings"));
+    assert!(plan.contains("cargo +nightly-2026-06-05 clippy --all-targets --workspace --all-features -- -D warnings"));
     assert!(run(&dir, "check").status.success());
     let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
     let lines: Vec<_> = calls.lines().collect();

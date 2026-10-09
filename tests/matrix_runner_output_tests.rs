@@ -24,6 +24,11 @@ fn matrix_plan_exports_its_dynamic_runner_binary() {
         "tasks = ['feature-matrix']\n",
     )
     .expect("CI configuration");
+    fs::write(
+        project.path().join(".infra/ci/defaults.toml"),
+        include_str!("../conf/defaults.toml"),
+    )
+    .expect("shared defaults");
 
     let result = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
         .args([
