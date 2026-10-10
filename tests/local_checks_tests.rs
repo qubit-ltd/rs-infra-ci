@@ -17,6 +17,13 @@ use qubit_infra_ci::Config;
 use tempfile::TempDir;
 use tempfile::tempdir;
 
+const SHARED_DEFAULTS: &str = r#"
+build_toolchain = "1.94.0"
+clippy_toolchain = "nightly-2026-06-05"
+nightly_toolchain = "nightly-2026-06-05"
+fuzz_version = "0.13.2"
+"#;
+
 /// Creates executable process fixtures without changing the test process
 /// environment.
 fn fixture(config: &str) -> TempDir {
@@ -26,7 +33,7 @@ fn fixture(config: &str) -> TempDir {
     fs::write(dir.path().join(".infra/ci/ci.toml"), config).expect("configuration");
     fs::write(
         dir.path().join(".infra/tools/defaults.toml"),
-        include_str!("../conf/defaults.toml"),
+        SHARED_DEFAULTS,
     )
     .expect("shared defaults");
     script(
@@ -519,30 +526,30 @@ fn test_missing_shared_defaults_fails_before_any_command() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(!output.status.success());
-    assert!(stderr.contains(".infra/ci/defaults.toml"), "{stderr}");
+    assert!(stderr.contains(".infra/tools/defaults.toml"), "{stderr}");
     assert!(stderr.contains("run ./update-infra.sh"), "{stderr}");
     assert!(!dir.path().join("calls").exists());
 }
 
 #[test]
-fn test_shared_defaults_falls_back_to_legacy_path_when_new_path_is_absent() {
+fn test_legacy_shared_defaults_is_ignored_after_migration() {
     let dir = fixture("tasks = ['clippy']\n");
     fs::remove_file(dir.path().join(".infra/tools/defaults.toml"))
         .expect("remove new shared defaults");
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("legacy configuration directory");
     fs::write(
         dir.path().join(".infra/ci/defaults.toml"),
-        include_str!("../conf/defaults.toml"),
+        SHARED_DEFAULTS,
     )
     .expect("legacy shared defaults");
 
     let output = run(&dir, "check");
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!output.status.success());
+    assert!(stderr.contains(".infra/tools/defaults.toml"), "{stderr}");
+    assert!(stderr.contains("run ./update-infra.sh"), "{stderr}");
+    assert!(!dir.path().join("calls").exists());
 }
 
 #[test]
@@ -551,7 +558,7 @@ fn test_invalid_new_shared_defaults_does_not_fall_back_to_legacy_path() {
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("legacy configuration directory");
     fs::write(
         dir.path().join(".infra/ci/defaults.toml"),
-        include_str!("../conf/defaults.toml"),
+        SHARED_DEFAULTS,
     )
     .expect("legacy shared defaults");
     fs::write(

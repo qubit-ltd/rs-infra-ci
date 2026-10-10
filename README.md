@@ -23,7 +23,7 @@ From a Rust project root:
 cargo run --manifest-path /path/to/rs-infra-ci/Cargo.toml -- --help
 ```
 
-The project's `.infra` configuration remains the source of truth. Run `./update-infra.sh` to install the shared `.infra/ci/defaults.toml` from this repository's `main` branch before using the tool. The task list and project-specific options remain in `.infra/ci/ci.toml`.
+The project's `.infra` configuration remains the source of truth. Run `./update-infra.sh` to install the shared `.infra/tools/defaults.toml` managed by `rs-infra-tools` before using the tool. The task list and project-specific options remain in `.infra/ci/ci.toml`.
 
 ## Workflow contract
 
@@ -60,7 +60,7 @@ fuzz_seconds_per_target = 10
 fuzz_max_len = 4096
 ```
 
-The shared `.infra/ci/defaults.toml` supplies `build_toolchain`,
+The shared `.infra/tools/defaults.toml` supplies `build_toolchain`,
 `clippy_toolchain`, `nightly_toolchain`, and `fuzz_version`. Project copies of
 these values may remain during migration only when they match the installed
 defaults; a different value fails validation. Paths are relative to the

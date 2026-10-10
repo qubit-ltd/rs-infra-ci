@@ -18,6 +18,13 @@ use qubit_infra_ci::plan_workflow;
 use qubit_infra_ci::workflow;
 use tempfile::tempdir;
 
+const SHARED_DEFAULTS: &str = r#"
+build_toolchain = "1.94.0"
+clippy_toolchain = "nightly-2026-06-05"
+nightly_toolchain = "nightly-2026-06-05"
+fuzz_version = "0.13.2"
+"#;
+
 #[test]
 fn verify_job_contains_lock_and_all_verification_suites() {
     let workflow = jobs(&[Task::Verify], &Default::default()).expect("workflow jobs");
@@ -132,7 +139,7 @@ fn project_workflow_uses_ci_configuration_and_can_be_planned() {
     fs::write(project.path().join(".infra/ci/ci.toml"), "tasks = ['style']\n").expect("CI configuration");
     fs::write(
         project.path().join(".infra/tools/defaults.toml"),
-        include_str!("../conf/defaults.toml"),
+        SHARED_DEFAULTS,
     )
     .expect("shared defaults");
 

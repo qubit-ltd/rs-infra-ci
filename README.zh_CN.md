@@ -23,7 +23,7 @@ cargo install --git https://github.com/qubit-ltd/rs-infra-ci.git --locked qubit-
 cargo run --manifest-path /path/to/rs-infra-ci/Cargo.toml -- --help
 ```
 
-项目的 `.infra` 配置仍然是行为的唯一来源。使用工具前运行 `./update-infra.sh`，从本仓库 `main` 分支安装公共的 `.infra/ci/defaults.toml`。任务清单和项目专属参数仍放在 `.infra/ci/ci.toml`。
+项目的 `.infra` 配置仍然是行为的唯一来源。使用工具前运行 `./update-infra.sh`，安装由 `rs-infra-tools` 管理的公共配置 `.infra/tools/defaults.toml`。任务清单和项目专属参数仍放在 `.infra/ci/ci.toml`。
 
 ## 工作流契约
 
@@ -58,7 +58,7 @@ fuzz_seconds_per_target = 10
 fuzz_max_len = 4096
 ```
 
-公共的 `.infra/ci/defaults.toml` 提供 `build_toolchain`、`clippy_toolchain`、
+公共的 `.infra/tools/defaults.toml` 提供 `build_toolchain`、`clippy_toolchain`、
 `nightly_toolchain` 和 `fuzz_version`。迁移期间，项目中保留相同的旧值仍可运行；
 不同值会校验失败。文件路径相对于项目根目录。未知的 `[local]` 配置项或无效配置
 会在执行前报错。选项来自 `.infra`，不读取旧的 `RS_CI_*` 或

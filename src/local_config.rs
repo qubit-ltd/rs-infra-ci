@@ -59,33 +59,12 @@ struct SharedDefaults {
 }
 
 impl SharedDefaults {
-    /// Reads shared settings, preferring the current path and supporting the legacy path.
-    fn load(project: &Path) -> Result<(Self, std::path::PathBuf)> {
-        let current_path = project.join(".infra/tools/defaults.toml");
-        let legacy_path = project.join(".infra/ci/defaults.toml");
-        let (path, text) = match std::fs::read_to_string(&current_path) {
-            Ok(text) => (current_path, text),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let text = std::fs::read_to_string(&legacy_path).with_context(|| {
-                    format!(
-                        "failed to read {}; run ./update-infra.sh",
-                        legacy_path.display()
-                    )
-                })?;
-                (legacy_path, text)
-            }
-            Err(error) => {
-                return Err(error).with_context(|| {
-                    format!(
-                        "failed to read {}; run ./update-infra.sh",
-                        current_path.display()
-                    )
-                });
-            }
-        };
-        let defaults =
-            toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
-        Ok((defaults, path))
+    /// Reads shared settings from the installed project configuration.
+    fn load(project: &Path) -> Result<Self> {
+        let path = project.join(".infra/tools/defaults.toml");
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}; run ./update-infra.sh", path.display()))?;
+        toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
     }
 }
 
@@ -126,7 +105,7 @@ impl LocalConfig {
             .transpose()
             .context("invalid [local] CI configuration")?
             .unwrap_or_default();
-        let (shared, defaults_path) = SharedDefaults::load(project)?;
+        let shared = SharedDefaults::load(project)?;
         for (key, expected) in [
             ("build_toolchain", shared.build_toolchain.as_str()),
             ("clippy_toolchain", shared.clippy_toolchain.as_str()),
@@ -137,13 +116,7 @@ impl LocalConfig {
                 .and_then(|value| value.get(key))
                 .is_some_and(|value| value.as_str() != Some(expected))
             {
-                bail!(
-                    "{key} is managed by {}; remove the project override",
-                    defaults_path
-                        .strip_prefix(project)
-                        .unwrap_or(&defaults_path)
-                        .display()
-                );
+                bail!("{key} is managed by .infra/tools/defaults.toml; remove the project override");
             }
         }
         config.build_toolchain = Some(shared.build_toolchain);

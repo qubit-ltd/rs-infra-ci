@@ -11,6 +11,13 @@ use std::process::Command;
 
 use tempfile::tempdir;
 
+const SHARED_DEFAULTS: &str = r#"
+build_toolchain = "1.94.0"
+clippy_toolchain = "nightly-2026-06-05"
+nightly_toolchain = "nightly-2026-06-05"
+fuzz_version = "0.13.2"
+"#;
+
 #[test]
 fn matrix_plan_exports_its_dynamic_runner_binary() {
     let project = tempdir().expect("project directory");
@@ -28,7 +35,7 @@ fn matrix_plan_exports_its_dynamic_runner_binary() {
     .expect("CI configuration");
     fs::write(
         project.path().join(".infra/tools/defaults.toml"),
-        include_str!("../conf/defaults.toml"),
+        SHARED_DEFAULTS,
     )
     .expect("shared defaults");
 
