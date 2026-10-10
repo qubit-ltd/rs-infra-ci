@@ -26,18 +26,9 @@ fn matrix_plan_exports_its_dynamic_runner_binary() {
     let runner = output.path().join("bin/rs-infra-ci");
 
     fs::create_dir_all(project.path().join(".infra/ci")).expect("CI directory");
-    fs::create_dir_all(project.path().join(".infra/tools"))
-        .expect("tools configuration directory");
-    fs::write(
-        project.path().join(".infra/ci/ci.toml"),
-        "tasks = ['feature-matrix']\n",
-    )
-    .expect("CI configuration");
-    fs::write(
-        project.path().join(".infra/tools/defaults.toml"),
-        SHARED_DEFAULTS,
-    )
-    .expect("shared defaults");
+    fs::create_dir_all(project.path().join(".infra/tools")).expect("tools configuration directory");
+    fs::write(project.path().join(".infra/ci/ci.toml"), "tasks = ['feature-matrix']\n").expect("CI configuration");
+    fs::write(project.path().join(".infra/tools/defaults.toml"), SHARED_DEFAULTS).expect("shared defaults");
 
     let result = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
         .args([
@@ -53,11 +44,7 @@ fn matrix_plan_exports_its_dynamic_runner_binary() {
         .output()
         .expect("run matrix planning");
 
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
+    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
     assert_eq!(fs::read_to_string(matrix).unwrap(), "{\"include\":[]}\n");
     assert!(runner.is_file(), "matrix runner binary should be exported");
     assert_eq!(

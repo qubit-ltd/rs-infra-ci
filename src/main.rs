@@ -111,11 +111,7 @@ fn execute() -> Result<()> {
             }
         }
         Command::Matrix {
-            command:
-                MatrixCommand::Plan {
-                    output,
-                    runner_output,
-                },
+            command: MatrixCommand::Plan { output, runner_output },
         } => {
             let matrix = plan_github_matrix(&cli.project)?;
             let mut json = serde_json::to_vec(&matrix)?;
@@ -127,10 +123,7 @@ fn execute() -> Result<()> {
                 std::io::stdout().write_all(&json)?;
             }
             if let Some(path) = runner_output {
-                if let Some(parent) = path
-                    .parent()
-                    .filter(|parent| !parent.as_os_str().is_empty())
-                {
+                if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::copy(std::env::current_exe()?, path)?;
