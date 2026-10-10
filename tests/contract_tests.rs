@@ -26,7 +26,7 @@ fuzz_version = "0.13.2"
 "#;
 
 #[test]
-fn verify_job_contains_lock_and_all_verification_suites() {
+fn test_verify_job_contains_lock_and_all_verification_suites() {
     let workflow = jobs(&[Task::Verify], &Default::default()).expect("workflow jobs");
     let commands = &workflow[0].commands;
 
@@ -39,7 +39,7 @@ fn verify_job_contains_lock_and_all_verification_suites() {
 }
 
 #[test]
-fn workflow_tasks_do_not_require_project_tool_pins() {
+fn test_workflow_tasks_do_not_require_project_tool_pins() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/dependency")).expect("dependency directory");
     fs::write(
@@ -59,7 +59,7 @@ package = "qubit-infra-dependency"
 }
 
 #[test]
-fn invalid_tool_pin_is_ignored_by_dynamic_workflow_resolution() {
+fn test_invalid_tool_pin_is_ignored_by_dynamic_workflow_resolution() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/style")).expect("style directory");
     fs::write(
@@ -77,14 +77,14 @@ fn invalid_tool_pin_is_ignored_by_dynamic_workflow_resolution() {
 }
 
 #[test]
-fn duplicate_jobs_are_rejected() {
+fn test_duplicate_jobs_are_rejected() {
     let error = jobs(&[Task::Style, Task::Style], &Default::default()).expect_err("duplicate tasks must be rejected");
 
     assert!(error.to_string().contains("configured more than once"));
 }
 
 #[test]
-fn task_selection_includes_dependency() {
+fn test_task_selection_includes_dependency() {
     let selected = Config {
         tasks: vec![Task::Style, Task::Verify, Task::Coverage, Task::Pages, Task::Dependency],
     }
@@ -95,14 +95,14 @@ fn task_selection_includes_dependency() {
 }
 
 #[test]
-fn default_task_selection_includes_dependency() {
+fn test_default_task_selection_includes_dependency() {
     let selected = Config::default().select(&[]).expect("default task selection");
 
     assert!(selected.contains(&Task::Dependency));
 }
 
 #[test]
-fn dependency_job_runs_check_without_sync() {
+fn test_dependency_job_runs_check_without_sync() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/dependency")).expect("dependency directory");
     fs::write(
@@ -125,7 +125,7 @@ package = "qubit-infra-dependency"
 }
 
 #[test]
-fn tool_spec_is_constructible_for_workflow_consumers() {
+fn test_tool_spec_is_constructible_for_workflow_consumers() {
     let tool = ToolSpec {
         source: "source".into(),
         revision: "revision".into(),
@@ -136,7 +136,7 @@ fn tool_spec_is_constructible_for_workflow_consumers() {
 }
 
 #[test]
-fn project_workflow_uses_ci_configuration_and_can_be_planned() {
+fn test_project_workflow_uses_ci_configuration_and_can_be_planned() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/ci")).expect("CI directory");
     fs::create_dir_all(project.path().join(".infra/tools")).expect("tools configuration directory");

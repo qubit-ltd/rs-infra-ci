@@ -8,6 +8,7 @@
 
 //! Project-specific CI options combined with installed shared tool versions.
 
+use std::path::Component;
 use std::path::Path;
 
 use anyhow::Context;
@@ -127,7 +128,7 @@ impl LocalConfig {
             if path.is_empty()
                 || Path::new(path)
                     .components()
-                    .any(|part| !matches!(part, std::path::Component::Normal(_) | std::path::Component::CurDir))
+                    .any(|part| !matches!(part, Component::Normal(_) | Component::CurDir))
             {
                 bail!("local CI paths must be project-relative: {path}");
             }

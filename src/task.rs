@@ -68,6 +68,7 @@ impl Task {
     /// # Returns
     ///
     /// The independent infrastructure binary that implements this task.
+    #[must_use]
     pub(crate) fn executable(self) -> &'static str {
         match self {
             Self::Style => "rs-infra-style",
@@ -92,6 +93,7 @@ impl Task {
     /// # Returns
     ///
     /// The ordered argument sequences passed to the task's executable.
+    #[must_use]
     pub(crate) fn commands(self) -> &'static [&'static [&'static str]] {
         match self {
             Self::Style => &[&["check"]],

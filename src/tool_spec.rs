@@ -44,6 +44,7 @@ impl ToolSpec {
     /// # Returns
     ///
     /// The complete argument vector in the order expected by Cargo.
+    #[must_use]
     pub fn install_args(&self) -> Vec<String> {
         vec![
             "install".into(),

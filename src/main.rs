@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -119,7 +120,6 @@ fn execute() -> Result<()> {
             if let Some(path) = output {
                 std::fs::write(path, json)?;
             } else {
-                use std::io::Write;
                 std::io::stdout().write_all(&json)?;
             }
             if let Some(path) = runner_output {

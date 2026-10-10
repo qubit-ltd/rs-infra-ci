@@ -249,6 +249,11 @@ pub fn plan(project: &Path, tasks: Vec<Task>) -> Result<()> {
 /// temporarily update Cargo.lock and restore it on normal success or failure.
 /// Audit may retry with cached data according to the local configuration.
 ///
+/// # Parameters
+///
+/// * `project` - The project directory where infrastructure commands run.
+/// * `tasks` - Tasks to execute, in order.
+///
 /// # Errors
 ///
 /// Returns an error when a task cannot start or exits unsuccessfully.
@@ -260,6 +265,13 @@ pub fn run(project: &Path, tasks: Vec<Task>) -> Result<()> {
 ///
 /// Coverage collection and validation still run when `enforce_thresholds` is
 /// false. Other failed commands remain errors.
+///
+/// # Parameters
+///
+/// * `project` - The project directory where infrastructure commands run.
+/// * `tasks` - Tasks to execute, in order.
+/// * `enforce_thresholds` - Whether coverage percentage thresholds cause
+///   failures.
 ///
 /// # Errors
 ///

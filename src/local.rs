@@ -21,6 +21,17 @@ use crate::local_config::LocalConfig;
 
 /// Builds a Cargo invocation using the configured build or Clippy toolchain.
 /// An explicit `+toolchain` argument takes precedence over configured defaults.
+///
+/// # Parameters
+///
+/// * `config` - The local toolchain settings used when no explicit toolchain is
+///   supplied.
+/// * `args` - Cargo arguments, including any explicit toolchain selector.
+///
+/// # Returns
+///
+/// A command specification with the selected toolchain prepended when
+/// applicable.
 pub(crate) fn cargo(config: &LocalConfig, args: Vec<String>) -> CommandSpec {
     let toolchain = if args.first().is_some_and(|arg| arg.starts_with('+')) {
         None
@@ -42,6 +53,22 @@ pub(crate) fn cargo(config: &LocalConfig, args: Vec<String>) -> CommandSpec {
 }
 
 /// Resolves a project-owned hook, skipping absence and rejecting invalid files.
+///
+/// # Parameters
+///
+/// * `project` - The canonical project directory used to resolve the configured
+///   hook path.
+/// * `config` - The local configuration containing the hook path.
+///
+/// # Returns
+///
+/// A command list containing the hook when it exists, or an empty list when it
+/// is absent.
+///
+/// # Errors
+///
+/// Returns an error if filesystem inspection fails or the hook exists but is
+/// not a regular, executable file.
 pub(crate) fn hook(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSpec>> {
     let path = project.join(&config.hook);
     if !path.try_exists()? {
@@ -75,6 +102,24 @@ pub(crate) fn hook(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSp
 
 /// Expands local tasks; returns `None` for tasks implemented by infrastructure
 /// tools.
+///
+/// # Parameters
+///
+/// * `project` - The project directory used by project-local tasks.
+/// * `task` - The task whose command plan should be constructed.
+/// * `config` - The local settings used to construct commands and apply feature
+///   switches.
+///
+/// # Returns
+///
+/// `Some(commands)` when this module implements the task, including an empty
+/// command list when a supported task is disabled; `None` when infrastructure
+/// tools implement the task.
+///
+/// # Errors
+///
+/// Returns an error when a task's local configuration or project files cannot
+/// be resolved.
 pub(crate) fn commands(project: &Path, task: Task, config: &LocalConfig) -> Result<Option<Vec<CommandSpec>>> {
     let commands = match task {
         Task::Clippy | Task::CoverageCfgClippy => {
@@ -247,6 +292,15 @@ pub(crate) fn ensure_fuzz(project: &Path, config: &LocalConfig) -> Result<()> {
 
 /// Creates a child process in the canonical project root without changing
 /// global state.
+///
+/// # Parameters
+///
+/// * `project` - The working directory assigned to the child process.
+/// * `spec` - The executable, arguments, and environment for the child.
+///
+/// # Returns
+///
+/// A configured command that has not yet been started.
 pub(crate) fn process(project: &Path, spec: &CommandSpec) -> Command {
     let mut command = Command::new(&spec.executable);
     command.current_dir(project).args(&spec.args).envs(&spec.env);
@@ -258,6 +312,15 @@ pub(crate) fn process(project: &Path, spec: &CommandSpec) -> Command {
 
 /// Executes one planned command, forwarding output and failing on any nonzero
 /// exit.
+///
+/// # Parameters
+///
+/// * `project` - The working directory for the command.
+/// * `spec` - The command to start.
+///
+/// # Errors
+///
+/// Returns an error if the process cannot start or exits unsuccessfully.
 pub(crate) fn execute(project: &Path, spec: &CommandSpec) -> Result<()> {
     let status = process(project, spec)
         .status()
@@ -271,6 +334,17 @@ pub(crate) fn execute(project: &Path, spec: &CommandSpec) -> Result<()> {
 /// Audits dependencies and retries only recognized advisory-database fetch
 /// failures. Captures and forwards both streams; vulnerability and retry
 /// failures remain fatal.
+///
+/// # Parameters
+///
+/// * `project` - The working directory for Cargo Audit.
+/// * `spec` - The initial audit command to run.
+/// * `config` - The setting controlling fallback to cached advisory data.
+///
+/// # Errors
+///
+/// Returns an error if the command cannot start, reports a non-retryable
+/// failure, or its cached-data retry fails.
 pub(crate) fn audit(project: &Path, spec: &CommandSpec, config: &LocalConfig) -> Result<()> {
     let output = process(project, spec).output().context("failed to start cargo audit")?;
     let stdout = String::from_utf8_lossy(&output.stdout);
