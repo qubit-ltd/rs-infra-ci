@@ -512,12 +512,15 @@ fn test_missing_shared_defaults_fails_before_any_command() {
     let dir = fixture("tasks = ['clippy']\n");
     fs::remove_file(dir.path().join(".infra/tools/defaults.toml"))
         .expect("remove shared defaults");
-    fs::remove_dir_all(dir.path().join(".infra/ci")).expect("remove CI configuration");
+    assert!(dir.path().join(".infra/ci/ci.toml").is_file());
+    assert!(!dir.path().join(".infra/ci/defaults.toml").exists());
 
     let output = run(&dir, "check");
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("run ./update-infra.sh"));
+    assert!(stderr.contains(".infra/ci/defaults.toml"), "{stderr}");
+    assert!(stderr.contains("run ./update-infra.sh"), "{stderr}");
     assert!(!dir.path().join("calls").exists());
 }
 
