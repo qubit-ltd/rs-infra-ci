@@ -22,9 +22,10 @@ use tempfile::tempdir;
 fn fixture(config: &str) -> TempDir {
     let dir = tempdir().expect("fixture");
     fs::create_dir_all(dir.path().join(".infra/ci")).expect("configuration directory");
+    fs::create_dir_all(dir.path().join(".infra/tools")).expect("tools configuration directory");
     fs::write(dir.path().join(".infra/ci/ci.toml"), config).expect("configuration");
     fs::write(
-        dir.path().join(".infra/ci/defaults.toml"),
+        dir.path().join(".infra/tools/defaults.toml"),
         include_str!("../conf/defaults.toml"),
     )
     .expect("shared defaults");
@@ -509,12 +510,58 @@ fn test_invalid_local_configuration_fails_before_any_command() {
 #[test]
 fn test_missing_shared_defaults_fails_before_any_command() {
     let dir = fixture("tasks = ['clippy']\n");
-    fs::remove_file(dir.path().join(".infra/ci/defaults.toml")).expect("remove shared defaults");
+    fs::remove_file(dir.path().join(".infra/tools/defaults.toml"))
+        .expect("remove shared defaults");
+    fs::remove_dir_all(dir.path().join(".infra/ci")).expect("remove CI configuration");
 
     let output = run(&dir, "check");
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("run ./update-infra.sh"));
+    assert!(!dir.path().join("calls").exists());
+}
+
+#[test]
+fn test_shared_defaults_falls_back_to_legacy_path_when_new_path_is_absent() {
+    let dir = fixture("tasks = ['clippy']\n");
+    fs::remove_file(dir.path().join(".infra/tools/defaults.toml"))
+        .expect("remove new shared defaults");
+    fs::create_dir_all(dir.path().join(".infra/ci")).expect("legacy configuration directory");
+    fs::write(
+        dir.path().join(".infra/ci/defaults.toml"),
+        include_str!("../conf/defaults.toml"),
+    )
+    .expect("legacy shared defaults");
+
+    let output = run(&dir, "check");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_invalid_new_shared_defaults_does_not_fall_back_to_legacy_path() {
+    let dir = fixture("tasks = ['clippy']\n");
+    fs::create_dir_all(dir.path().join(".infra/ci")).expect("legacy configuration directory");
+    fs::write(
+        dir.path().join(".infra/ci/defaults.toml"),
+        include_str!("../conf/defaults.toml"),
+    )
+    .expect("legacy shared defaults");
+    fs::write(
+        dir.path().join(".infra/tools/defaults.toml"),
+        "build_toolchain = [\n",
+    )
+    .expect("invalid new shared defaults");
+
+    let output = run(&dir, "check");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains(".infra/tools/defaults.toml"), "{stderr}");
     assert!(!dir.path().join("calls").exists());
 }
 
@@ -525,7 +572,9 @@ fn test_project_cannot_override_shared_toolchain() {
     let output = run(&dir, "check");
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("managed by .infra/ci/defaults.toml"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("managed by .infra/tools/defaults.toml")
+    );
     assert!(!dir.path().join("calls").exists());
 }
 

@@ -19,13 +19,15 @@ fn matrix_plan_exports_its_dynamic_runner_binary() {
     let runner = output.path().join("bin/rs-infra-ci");
 
     fs::create_dir_all(project.path().join(".infra/ci")).expect("CI directory");
+    fs::create_dir_all(project.path().join(".infra/tools"))
+        .expect("tools configuration directory");
     fs::write(
         project.path().join(".infra/ci/ci.toml"),
         "tasks = ['feature-matrix']\n",
     )
     .expect("CI configuration");
     fs::write(
-        project.path().join(".infra/ci/defaults.toml"),
+        project.path().join(".infra/tools/defaults.toml"),
         include_str!("../conf/defaults.toml"),
     )
     .expect("shared defaults");

@@ -127,9 +127,11 @@ fn tool_spec_is_constructible_for_workflow_consumers() {
 fn project_workflow_uses_ci_configuration_and_can_be_planned() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/ci")).expect("CI directory");
+    fs::create_dir_all(project.path().join(".infra/tools"))
+        .expect("tools configuration directory");
     fs::write(project.path().join(".infra/ci/ci.toml"), "tasks = ['style']\n").expect("CI configuration");
     fs::write(
-        project.path().join(".infra/ci/defaults.toml"),
+        project.path().join(".infra/tools/defaults.toml"),
         include_str!("../conf/defaults.toml"),
     )
     .expect("shared defaults");
