@@ -14,6 +14,8 @@ use std::process::Command;
 use std::process::Output;
 
 use qubit_infra_ci::Config;
+use qubit_infra_ci::Task;
+use qubit_infra_ci::workflow;
 use tempfile::TempDir;
 use tempfile::tempdir;
 
@@ -276,7 +278,73 @@ fn test_matrix_preserves_feature_package_doc_and_clippy_semantics() {
     assert!(calls.contains("clippy --all-targets --package one --no-default-features --features regex -- -D warnings"));
     assert!(calls.contains("|-D warnings|"));
     assert!(calls.contains("check --workspace --all-features"));
-    assert!(calls.contains("target/infra-feature-matrix/minimal"));
+    let target = dir
+        .path()
+        .canonicalize()
+        .expect("absolute project path")
+        .join("target/infra-feature-matrix");
+    assert!(target.is_absolute());
+    assert_eq!(calls.lines().count(), 5);
+    for call in calls.lines() {
+        assert_eq!(call.rsplit('|').next(), target.to_str(), "shared target: {call}");
+    }
+}
+
+fn matrix_with_full_clippy() -> TempDir {
+    let dir = fixture("tasks = ['feature-matrix', 'clippy']\n");
+    fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), r#"{"version":1,"checks":[{"name":"minimal","commands":["check","clippy"],"defaultFeatures":false,"features":["regex"]},{"name":"all","commands":["test","clippy"],"allFeatures":true}]}"#).expect("matrix");
+    dir
+}
+
+#[test]
+fn test_matrix_check_skips_clippy_covered_by_full_task() {
+    let dir = matrix_with_full_clippy();
+    let output = run(&dir, "check");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
+    assert!(calls.contains("clippy --workspace --all-targets --all-features -- -D warnings"));
+    assert!(!calls.contains("--no-default-features --features regex -- -D warnings"));
+    assert_eq!(calls.lines().filter(|call| call.starts_with("clippy ")).count(), 1);
+    assert!(calls.contains("check --workspace --no-default-features --features regex"));
+    assert!(calls.contains("test --workspace --all-features"));
+}
+
+#[test]
+fn test_matrix_plan_skips_clippy_covered_by_full_task() {
+    let dir = matrix_with_full_clippy();
+    let output = run_matrix(&dir, &["plan"]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let matrix: serde_json::Value = serde_json::from_slice(&output.stdout).expect("matrix JSON");
+    assert_eq!(
+        matrix,
+        serde_json::json!({"include":[{"name":"minimal","needs_clippy":false},{"name":"all","needs_clippy":false}]})
+    );
+    assert!(!dir.path().join("calls").exists());
+}
+
+#[test]
+fn test_matrix_run_skips_clippy_covered_by_full_task() {
+    let dir = matrix_with_full_clippy();
+    let output = run_matrix(&dir, &["run", "--check", "minimal"]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let calls = fs::read_to_string(dir.path().join("calls")).expect("calls");
+    assert!(calls.contains("check --workspace --no-default-features --features regex"));
+    assert!(!calls.contains("clippy "));
+    assert_eq!(calls.lines().count(), 1);
+}
+
+#[test]
+fn test_matrix_only_selection_uses_full_configured_tasks() {
+    let dir = matrix_with_full_clippy();
+    let jobs = workflow(dir.path(), &[Task::FeatureMatrix]).expect("selected matrix workflow");
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].commands.len(), 2);
+    assert!(
+        jobs[0]
+            .commands
+            .iter()
+            .all(|command| !command.args.iter().any(|arg| arg == "clippy"))
+    );
 }
 
 #[test]

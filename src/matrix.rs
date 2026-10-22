@@ -6,7 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-//! Cargo compatibility matrices with isolated artifacts and restored lockfiles.
+//! Cargo compatibility matrices with shared artifacts and restored lockfiles.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -19,6 +19,7 @@ use serde_json::from_slice;
 use serde_json::json;
 
 use crate::CommandSpec;
+use crate::Task;
 use crate::local;
 use crate::local_config::LocalConfig;
 
@@ -97,8 +98,7 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
     Ok(checks.clone())
 }
 
-/// Checks identifiers used as package names or isolated artifact directory
-/// names.
+/// Checks identifiers used as package names or matrix check names.
 fn identifier(value: &str, dots: bool) -> bool {
     value.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
         && value
@@ -132,9 +132,17 @@ fn boolean(value: &Value, key: &str, default: bool) -> Result<bool> {
         .unwrap_or(Ok(default))
 }
 
+/// Reads the complete effective CI task set to determine whether the full
+/// Clippy task covers matrix Clippy. Propagates configuration and task errors.
+fn full_clippy_enabled(project: &Path) -> Result<bool> {
+    let config = crate::load_config(project)?;
+    Ok(config.select(&[])?.contains(&Task::Clippy))
+}
+
 /// Produces the Cargo commands for one validated check, including dependency
 /// preparation.
 fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<CommandSpec>> {
+    let skip_clippy = full_clippy_enabled(project)?;
     let mut result = Vec::new();
     if let Some(dependency) = check.get("dependency") {
         let mut args = vec![
@@ -182,6 +190,9 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
         selection.push("--locked".into());
     }
     for command in strings(check, "commands")? {
+        if command == "clippy" && skip_clippy {
+            continue;
+        }
         let mut args = match command.as_str() {
             "doc" => vec!["doc".into(), "--no-deps".into()],
             "doc-test" => vec!["test".into(), "--doc".into()],
@@ -198,9 +209,7 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
         }
         result.push(spec);
     }
-    let target = project
-        .join("target/infra-feature-matrix")
-        .join(check["name"].as_str().context("check name")?);
+    let target = project.join("target/infra-feature-matrix");
     for command in &mut result {
         command
             .env
@@ -225,6 +234,7 @@ pub(crate) fn plan(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSp
 /// entries are rejected because GitHub Actions cannot schedule them.
 pub(crate) fn github_plan(project: &Path, config: &LocalConfig) -> Result<Value> {
     let checks = checks(project, config)?;
+    let skip_clippy = full_clippy_enabled(project)?;
     if checks.len() > 256 {
         bail!(
             "feature matrix has {} checks; GitHub Actions supports at most 256",
@@ -234,9 +244,10 @@ pub(crate) fn github_plan(project: &Path, config: &LocalConfig) -> Result<Value>
     let include: Vec<Value> = checks
         .iter()
         .map(|check| {
-            let needs_clippy = check["commands"]
-                .as_array()
-                .is_some_and(|commands| commands.iter().any(|command| command == "clippy"));
+            let needs_clippy = !skip_clippy
+                && check["commands"]
+                    .as_array()
+                    .is_some_and(|commands| commands.iter().any(|command| command == "clippy"));
             json!({"name": check["name"], "needs_clippy": needs_clippy})
         })
         .collect();
