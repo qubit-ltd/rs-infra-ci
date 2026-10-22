@@ -101,13 +101,17 @@ fuzz_max_len = 4096
 就不能为空，省略时使用 `--workspace`。`allFeatures` 不能与指定 feature 或
 `defaultFeatures: false` 同时使用。矩阵 Clippy 带有 `--all-targets -- -D warnings`，
 文档检查设置 `RUSTDOCFLAGS="-D warnings"`，文档测试调用 `cargo test --doc`。
+项目有效 CI 任务包含全量 `clippy` 任务时，本地执行和 GitHub 矩阵计划会跳过
+矩阵 Clippy；未启用全量任务时，仍按矩阵配置运行。此判断使用完整任务配置，
+也适用于 `--only=feature-matrix` 和直接执行 `matrix` 命令。
 
 单个检查可以设置 `"dependency": {"name": "example", "resolution": "precise",
 "version": "1.2.3"}`，或 `"dependency": {"name": "example", "resolution": "latest"}`。
 工具先更新依赖，验证只解析到一个版本（`precise` 还要求版本完全匹配），再以
 `--locked` 执行检查。每次依赖检查结束后恢复原 Cargo.lock，命令失败也会恢复；
-原先不存在锁文件时会删除本次生成的锁文件。各检查使用独立的
-`target/infra-feature-matrix/<name>` 产物目录。进程被强制终止时可能无法恢复；
+原先不存在锁文件时会删除本次生成的锁文件。所有检查共用
+`target/infra-feature-matrix` 产物目录，由 Cargo fingerprints 管理不同 feature、
+依赖解析及工具链之间的产物兼容性。进程被强制终止时可能无法恢复；
 不要在同一项目中并发写入锁文件。
 
 可复用的 `github-ci.yml` 默认先校验这份配置，再为每个检查创建独立的

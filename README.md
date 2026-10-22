@@ -106,6 +106,10 @@ must be nonempty if present. Without `packages`, checks use `--workspace`.
 `allFeatures` cannot be combined with named features or `defaultFeatures: false`.
 Matrix Clippy uses `--all-targets -- -D warnings`; matrix docs use
 `RUSTDOCFLAGS="-D warnings"`; doctests use `cargo test --doc`.
+When the project's effective CI tasks include the full `clippy` task, matrix
+Clippy is skipped in local execution and GitHub matrix planning. Otherwise,
+matrix Clippy runs as configured. This uses the complete task configuration,
+including for `--only=feature-matrix` and direct `matrix` commands.
 
 A check may set `"dependency": {"name": "example", "resolution": "precise",
 "version": "1.2.3"}` or `"dependency": {"name": "example", "resolution": "latest"}`.
@@ -113,7 +117,8 @@ The runner updates that dependency, verifies exactly one resolved version
 (and an exact match for `precise`), then runs the check with `--locked`.
 It restores the original Cargo.lock after each dependency check, including
 command failure, and removes a newly generated lockfile if none existed.
-Each check uses `target/infra-feature-matrix/<name>` for isolated artifacts.
+All checks share `target/infra-feature-matrix`; Cargo fingerprints manage
+artifact compatibility across features, dependency resolutions, and toolchains.
 Abrupt process termination can prevent restoration; do not run concurrent
 lockfile writers in the same project.
 
