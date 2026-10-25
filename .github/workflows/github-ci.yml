@@ -93,7 +93,8 @@ jobs:
         if: runner.os == 'Linux'
         run: rustup toolchain install nightly-2026-06-05 --profile minimal --component rustfmt --component clippy
       - name: Install project build toolchain
-        run: rustup toolchain install 1.94.0 --profile minimal --component rust-src
+        # Project hooks may run cargo clippy with the project's default toolchain.
+        run: rustup toolchain install 1.94.0 --profile minimal --component rust-src --component clippy
       - name: Run infrastructure CI orchestration
         run: ./.infra/bin/ci-check.sh --only=verify
       - name: Run style, hook, and coverage Clippy
