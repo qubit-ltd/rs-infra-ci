@@ -83,6 +83,7 @@ fuzz_max_len = 4096
 | `coverage` | `rs-infra-coverage collect`，不再仅调用配置检查 `check` |
 | `audit` | `cargo audit`；仅识别到漏洞库获取错误时才允许用 `--no-fetch --stale` 重试一次；漏洞或重试失败均阻断 CI |
 | `pages` / `dependency` | 显式开启：`rs-infra-pages build` / `rs-infra-dependency check` |
+| `platform` | 显式开启：`rs-infra-platform --project <path> check`；使用 `.infra/platform/platform.toml` 配置；将 `RS_INFRA_PLATFORM_CLEANUP` 透传给平台工具 |
 
 使用 `.infra/ci/cargo-matrix.json` 配置 feature 和依赖兼容性检查：
 

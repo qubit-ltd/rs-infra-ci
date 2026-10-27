@@ -102,6 +102,43 @@ fn test_default_task_selection_includes_dependency() {
 }
 
 #[test]
+fn test_platform_configuration_plans_one_independent_tool_command() {
+    let project = tempdir().expect("temporary project");
+    fs::create_dir_all(project.path().join(".infra/ci")).expect("CI directory");
+    fs::create_dir_all(project.path().join(".infra/tools")).expect("tools directory");
+    fs::write(project.path().join(".infra/ci/ci.toml"), "tasks = ['platform']\n").expect("platform configuration");
+    fs::write(project.path().join(".infra/tools/defaults.toml"), SHARED_DEFAULTS).expect("shared defaults");
+
+    let tasks = load_config(project.path())
+        .expect("platform configuration loads")
+        .select(&[])
+        .expect("platform selection");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].to_string(), "platform");
+    let planned = workflow(project.path(), &tasks).expect("platform workflow");
+    assert_eq!(planned.len(), 1);
+    assert_eq!(planned[0].commands.len(), 1);
+    let command = &planned[0].commands[0];
+    assert_eq!(command.executable, "rs-infra-platform");
+    assert_eq!(
+        command.args,
+        [
+            "--project".to_owned(),
+            project
+                .path()
+                .canonicalize()
+                .expect("project root")
+                .to_string_lossy()
+                .into_owned(),
+            "check".to_owned(),
+        ]
+    );
+    assert!(!Config::default().select(&[]).expect("defaults").contains(&tasks[0]));
+    let error = Config::default().select(&tasks).expect_err("platform requires opt-in");
+    assert!(error.to_string().contains("task 'platform' is not enabled"));
+}
+
+#[test]
 fn test_dependency_job_runs_check_without_sync() {
     let project = tempdir().expect("temporary project");
     fs::create_dir_all(project.path().join(".infra/dependency")).expect("dependency directory");

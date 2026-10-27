@@ -94,6 +94,99 @@ fn run_matrix(dir: &TempDir, args: &[&str]) -> Output {
 }
 
 #[test]
+fn test_platform_plan_and_check_forward_project_directory_and_cleanup_environment() {
+    let dir = fixture("tasks = ['platform']\n");
+    let project = dir.path().canonicalize().expect("canonical project");
+    let bin = dir.path().join("controlled-bin");
+    fs::create_dir(&bin).expect("controlled binary directory");
+    script(
+        &dir,
+        "controlled-bin/rs-infra-platform",
+        "#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$RS_INFRA_PLATFORM_CLEANUP\" \"$RUSTUP_TOOLCHAIN\" \"$@\" >> platform-call\n",
+    );
+    for operation in ["plan", "check"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
+            .current_dir(dir.path().parent().expect("parent directory"))
+            .args([
+                "--project",
+                dir.path()
+                    .file_name()
+                    .expect("relative project")
+                    .to_str()
+                    .expect("UTF-8 project"),
+                operation,
+            ])
+            .env("RS_INFRA_BIN_DIR", &bin)
+            .env("RS_INFRA_PLATFORM_CLEANUP", "0")
+            .output()
+            .expect("platform CLI");
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        if operation == "plan" {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert_eq!(stdout.matches("rs-infra-platform").count(), 1, "{stdout}");
+            assert!(
+                stdout.contains(&format!("--project {} check", project.display())),
+                "{stdout}"
+            );
+            assert!(!dir.path().join("platform-call").exists());
+        }
+    }
+    let call = fs::read_to_string(dir.path().join("platform-call")).expect("platform invocation");
+    assert_eq!(call.lines().count(), 6, "exactly one platform invocation");
+    assert_eq!(
+        call.lines().collect::<Vec<_>>(),
+        [
+            project.to_str().expect("project"),
+            "0",
+            "1.94.0",
+            "--project",
+            project.to_str().expect("project"),
+            "check"
+        ]
+    );
+}
+
+#[test]
+fn test_platform_only_requires_explicit_configuration() {
+    let dir = fixture("tasks = ['project-hook']\n");
+    let output = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
+        .args([
+            "--project",
+            dir.path().to_str().expect("project"),
+            "--only",
+            "platform",
+            "check",
+        ])
+        .output()
+        .expect("platform selection CLI");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("task 'platform' is not enabled"));
+}
+
+#[test]
+fn test_platform_failure_stops_subsequent_ci_tasks() {
+    let dir = fixture("tasks = ['platform', 'project-hook']\n");
+    script(
+        &dir,
+        "rs-infra-platform",
+        "#!/bin/sh\necho platform > platform-call\nexit 7\n",
+    );
+    script(&dir, "project-ci-check.sh", "#!/bin/sh\ntouch hook-ran\n");
+    let output = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"))
+        .args(["--project", dir.path().to_str().expect("project"), "check"])
+        .env("RS_INFRA_BIN_DIR", dir.path())
+        .output()
+        .expect("platform failure CLI");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("rs-infra-platform"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("platform-call")).expect("platform executed"),
+        "platform\n"
+    );
+    assert!(!dir.path().join("hook-ran").exists());
+}
+
+#[test]
 fn test_matrix_plan_writes_validated_github_matrix() {
     let dir = fixture("tasks = ['feature-matrix']\n");
     fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), r#"{"version":1,"checks":[{"name":"default","commands":["check"]},{"name":"lint","commands":["clippy","test"]}]}"#).expect("matrix");

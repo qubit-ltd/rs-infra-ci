@@ -60,6 +60,8 @@ pub enum Task {
     Pages,
     /// Checks dependency policy compliance.
     Dependency,
+    /// Runs the optional platform checks through the independent platform tool.
+    Platform,
 }
 
 impl Task {
@@ -85,6 +87,7 @@ impl Task {
             Self::Coverage => "rs-infra-coverage",
             Self::Pages => "rs-infra-pages",
             Self::Dependency => "rs-infra-dependency",
+            Self::Platform => "rs-infra-platform",
         }
     }
 
@@ -126,6 +129,7 @@ impl Task {
             Self::Coverage => &[&["collect"]],
             Self::Pages => &[&["build"]],
             Self::Dependency => &[&["check"]],
+            Self::Platform => &[&["check"]],
         }
     }
 }
@@ -152,6 +156,7 @@ impl fmt::Display for Task {
             Self::Coverage => "coverage",
             Self::Pages => "pages",
             Self::Dependency => "dependency",
+            Self::Platform => "platform",
         })
     }
 }

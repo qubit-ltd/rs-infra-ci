@@ -87,6 +87,7 @@ execution. Options come from `.infra`, not legacy `RS_CI_*` or
 | `coverage` | `rs-infra-coverage collect`, rather than configuration-only `check` |
 | `audit` | `cargo audit`; only recognized database-fetch failures may retry once with `--no-fetch --stale`; vulnerability and retry failures stop CI |
 | `pages` / `dependency` | Explicit opt-ins: `rs-infra-pages build` / `rs-infra-dependency check` |
+| `platform` | Explicit opt-in: `rs-infra-platform --project <path> check`; configured in `.infra/platform/platform.toml`; forwards `RS_INFRA_PLATFORM_CLEANUP` to the platform tool |
 
 Use `.infra/ci/cargo-matrix.json` for feature and dependency compatibility:
 
