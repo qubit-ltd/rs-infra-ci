@@ -3,6 +3,8 @@ set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 
+export SPI_PACKAGE_ALLOW_DIRTY="${SPI_PACKAGE_ALLOW_DIRTY:-1}"
+
 worker_package="$project_root/worker/package.json"
 if [[ -f "$worker_package" ]] && grep -Eq '"build:test-worker"[[:space:]]*:' "$worker_package"; then
     command -v node >/dev/null || { echo "error: Node.js is required to build the test worker" >&2; exit 1; }
