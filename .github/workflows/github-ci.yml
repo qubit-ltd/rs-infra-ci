@@ -366,9 +366,11 @@ jobs:
       matrix:
         include:
           - {suite: miri, os: ubuntu-latest}
-          - {suite: miri, os: macos-14}
+          - {suite: miri, os: macos-26}
+          - {suite: miri, os: macos-26-intel}
           - {suite: address-sanitizer, os: ubuntu-latest}
-          - {suite: address-sanitizer, os: macos-14}
+          - {suite: address-sanitizer, os: macos-26}
+          - {suite: address-sanitizer, os: macos-26-intel}
           - {suite: loom, os: ubuntu-latest}
           - {suite: fuzz, os: ubuntu-latest}
           - {suite: audit, os: ubuntu-latest}
