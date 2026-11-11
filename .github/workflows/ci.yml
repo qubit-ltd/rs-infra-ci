@@ -24,5 +24,7 @@ jobs:
           components: rustfmt
       - name: Install pinned nightly components
         run: rustup toolchain install nightly-2026-06-05 --profile minimal --component rustfmt --component clippy
+      - name: Test CI entrypoint locking
+        run: python3 tests/ci_check_lock_tests.py
       - run: ./.infra/bin/align-ci.sh
       - run: ./.infra/bin/ci-check.sh
