@@ -313,7 +313,7 @@ jobs:
           if-no-files-found: error
 
   pages:
-    if: ${{ always() && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.verify.result == 'success' && needs.coverage.result == 'success' && (needs.feature-matrix-plan.result == 'success' || (!inputs.feature-matrix-enabled && needs.feature-matrix-plan.result == 'skipped')) && (needs.feature-matrix.result == 'success' || needs.feature-matrix.result == 'skipped') && (needs.derive-coverage.result == 'success' || (!inputs.derive-coverage && needs.derive-coverage.result == 'skipped')) }}
+    if: ${{ always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.verify.result == 'success' && needs.coverage.result == 'success' && (needs.feature-matrix-plan.result == 'success' || (!inputs.feature-matrix-enabled && needs.feature-matrix-plan.result == 'skipped')) && (needs.feature-matrix.result == 'success' || needs.feature-matrix.result == 'skipped') && (needs.derive-coverage.result == 'success' || (!inputs.derive-coverage && needs.derive-coverage.result == 'skipped')) }}
     needs: [verify, feature-matrix-plan, feature-matrix, coverage, derive-coverage]
     outputs:
       deploy: ${{ steps.pages-config.outputs.deploy }}
@@ -346,7 +346,7 @@ jobs:
           path: public
 
   pages-deploy:
-    if: needs.pages.outputs.deploy == 'true' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: ${{ always() && needs.pages.result == 'success' && needs.pages.outputs.deploy == 'true' }}
     needs: [pages]
     runs-on: ubuntu-latest
     permissions:
