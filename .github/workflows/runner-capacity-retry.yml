@@ -1,0 +1,65 @@
+name: Retry runner capacity cancellations
+
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Report eligible jobs without rerunning them
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-capacity-retry
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    # Run only trusted default-branch code with the installation credentials.
+    if: >-
+      ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        && vars.RUNNER_RETRY_REPOSITORIES != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Validate repository allowlist
+        env:
+          REPOSITORIES: ${{ vars.RUNNER_RETRY_REPOSITORIES }}
+        run: |
+          if [[ ! "$REPOSITORIES" =~ ^rs-[A-Za-z0-9_.-]+(,rs-[A-Za-z0-9_.-]+)*$ ]]; then
+            echo 'RUNNER_RETRY_REPOSITORIES must be a comma-separated list of rs-* repository names.'
+            exit 1
+          fi
+      - name: Test retry policy
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 tests/runner_capacity_retry_tests.py
+      - name: Create scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
+        with:
+          client-id: ${{ vars.RUNNER_RETRY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RUNNER_RETRY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ vars.RUNNER_RETRY_REPOSITORIES }}
+          permission-actions: write
+          permission-checks: read
+      - name: Scan completed Rust CI runs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPOSITORIES: ${{ vars.RUNNER_RETRY_REPOSITORIES }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          args=(--owner "$OWNER" --repositories "$REPOSITORIES")
+          if [[ "$DRY_RUN" == true ]]; then
+            args+=(--dry-run)
+          fi
+          python3 .github/scripts/retry-runner-capacity.py "${args[@]}"
