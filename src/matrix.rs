@@ -20,12 +20,17 @@ use serde_json::json;
 
 use crate::CommandSpec;
 use crate::Task;
+use crate::execution::Execution;
 use crate::local;
-use crate::local::Execution;
 use crate::local_config::LocalConfig;
 
 /// Reads and validates the complete matrix before any command can mutate the
 /// project.
+///
+/// # Parameters
+///
+/// * `project` - Project directory.
+/// * `config` - Local matrix configuration.
 fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
     let path = project.join(&config.matrix);
     if !path.try_exists()? {
@@ -100,6 +105,11 @@ fn checks(project: &Path, config: &LocalConfig) -> Result<Vec<Value>> {
 }
 
 /// Checks identifiers used as package names or matrix check names.
+///
+/// # Parameters
+///
+/// * `value` - Identifier to validate.
+/// * `dots` - Whether to allow dots and plus signs.
 fn identifier(value: &str, dots: bool) -> bool {
     value.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
         && value
@@ -108,6 +118,11 @@ fn identifier(value: &str, dots: bool) -> bool {
 }
 
 /// Extracts a string array, rejecting null and non-string elements.
+///
+/// # Parameters
+///
+/// * `value` - JSON object containing the field.
+/// * `key` - Name of the array field.
 fn strings(value: &Value, key: &str) -> Result<Vec<String>> {
     match value.get(key) {
         None => Ok(Vec::new()),
@@ -126,6 +141,12 @@ fn strings(value: &Value, key: &str) -> Result<Vec<String>> {
 }
 
 /// Reads a boolean option without confusing explicit false with absence.
+///
+/// # Parameters
+///
+/// * `value` - JSON object containing the field.
+/// * `key` - Name of the Boolean field.
+/// * `default` - Value used if the field is absent.
 fn boolean(value: &Value, key: &str, default: bool) -> Result<bool> {
     value
         .get(key)
@@ -135,6 +156,10 @@ fn boolean(value: &Value, key: &str, default: bool) -> Result<bool> {
 
 /// Reads the complete effective CI task set to determine whether the full
 /// Clippy task covers matrix Clippy. Propagates configuration and task errors.
+///
+/// # Parameters
+///
+/// * `project` - Project directory containing CI configuration.
 fn full_clippy_enabled(project: &Path) -> Result<bool> {
     let config = crate::load_config(project)?;
     Ok(config.select(&[])?.contains(&Task::Clippy))
@@ -142,6 +167,12 @@ fn full_clippy_enabled(project: &Path) -> Result<bool> {
 
 /// Produces the Cargo commands for one validated check, including dependency
 /// preparation.
+///
+/// # Parameters
+///
+/// * `project` - Project directory for Cargo.
+/// * `config` - Local CI configuration.
+/// * `check` - Validated JSON matrix entry.
 fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<CommandSpec>> {
     let skip_clippy = full_clippy_enabled(project)?;
     let mut result = Vec::new();
@@ -223,6 +254,11 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
 }
 
 /// Expands every validated matrix command for the public workflow plan.
+///
+/// # Parameters
+///
+/// * `project` - Project directory for the matrix.
+/// * `config` - Local CI configuration.
 pub(crate) fn plan(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSpec>> {
     checks(project, config)?
         .iter()
@@ -236,6 +272,11 @@ pub(crate) fn plan(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSp
 /// The output contains only checked names and whether a job needs Clippy.
 /// An empty configuration produces an empty `include` list. More than 256
 /// entries are rejected because GitHub Actions cannot schedule them.
+///
+/// # Parameters
+///
+/// * `project` - Project directory for the matrix.
+/// * `config` - Local CI configuration.
 pub(crate) fn github_plan(project: &Path, config: &LocalConfig) -> Result<Value> {
     let checks = checks(project, config)?;
     let skip_clippy = full_clippy_enabled(project)?;
@@ -261,17 +302,25 @@ pub(crate) fn github_plan(project: &Path, config: &LocalConfig) -> Result<Value>
 /// Runs matrix checks sequentially, restoring the entry lockfile even on
 /// command failure. Dependency metadata must resolve exactly one matching
 /// version before tests start.
+///
+/// # Parameters
+///
+/// * `project` - Project directory for Cargo.
+/// * `config` - Local CI configuration.
+/// * `execution` - Compiler cache settings for this CI invocation.
 pub(crate) fn run(project: &Path, config: &LocalConfig, execution: &Execution) -> Result<()> {
     run_selected(project, config, None, execution)
 }
 
 /// Executes all checks or one selected check with the same lockfile handling.
-fn run_selected(
-    project: &Path,
-    config: &LocalConfig,
-    name: Option<&str>,
-    execution: &Execution,
-) -> Result<()> {
+///
+/// # Parameters
+///
+/// * `project` - Project directory for Cargo.
+/// * `config` - Local CI configuration.
+/// * `name` - Optional name of a single check.
+/// * `execution` - Compiler cache settings for this CI invocation.
+fn run_selected(project: &Path, config: &LocalConfig, name: Option<&str>, execution: &Execution) -> Result<()> {
     let mut checks = checks(project, config)?;
     if let Some(name) = name {
         let check = checks
@@ -343,6 +392,10 @@ fn run_selected(
 ///
 /// Missing or empty matrix files yield an empty `include` list. Invalid
 /// configuration, an invalid project directory, or more than 256 checks fail.
+///
+/// # Parameters
+///
+/// * `project` - Project directory containing the matrix configuration.
 pub fn plan_github_matrix(project: &Path) -> Result<Value> {
     let project = project.canonicalize().context("invalid project directory")?;
     let config = LocalConfig::load(&project)?;
@@ -354,6 +407,11 @@ pub fn plan_github_matrix(project: &Path) -> Result<Value> {
 /// The selected check may run Cargo and temporarily modify Cargo.lock for a
 /// dependency scenario. The lockfile is restored on normal success or error.
 /// Invalid configuration, an unknown name, or a failed command return errors.
+///
+/// # Parameters
+///
+/// * `project` - Project directory where Cargo runs.
+/// * `name` - Name of the check to run.
 pub fn run_matrix_check(project: &Path, name: &str) -> Result<()> {
     let project = project.canonicalize().context("invalid project directory")?;
     let config = LocalConfig::load(&project)?;

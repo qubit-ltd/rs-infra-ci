@@ -408,11 +408,7 @@ fn test_ci_passes_cache_to_children_and_respects_the_requested_matrix_target() {
     )
     .expect("matrix");
     let project = dir.path().canonicalize().expect("project");
-    let path = format!(
-        "{}:{}",
-        project.display(),
-        std::env::var("PATH").expect("PATH")
-    );
+    let path = format!("{}:{}", project.display(), std::env::var("PATH").expect("PATH"));
     let run = |args: &[&str], wrapper: Option<&str>| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"));
         command
@@ -430,19 +426,12 @@ fn test_ci_passes_cache_to_children_and_respects_the_requested_matrix_target() {
             command.env("RUSTC_WRAPPER", wrapper);
         }
         let output = command.output().expect("CLI");
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
         output
     };
     let output = run(&["check"], None);
     assert!(String::from_utf8_lossy(&output.stderr).contains("feature-matrix: completed in"));
-    run(
-        &["matrix", "run", "--check", "minimal"],
-        Some("caller-wrapper"),
-    );
+    run(&["matrix", "run", "--check", "minimal"], Some("caller-wrapper"));
     let calls = fs::read_to_string(project.join("calls")).expect("calls");
     let matrix_target = project.join("chosen-target/infra-feature-matrix");
     assert_eq!(

@@ -16,6 +16,8 @@ use anyhow::Result;
 use anyhow::bail;
 use serde::Deserialize;
 
+use crate::shared_defaults::SharedDefaults;
+
 /// Local execution settings assembled from the project `[local]` table and
 /// the installed `.infra/tools/defaults.toml`.
 #[derive(Debug, Deserialize)]
@@ -45,30 +47,6 @@ pub(crate) struct LocalConfig {
     pub hook: String,
 }
 
-/// Shared tool versions installed from `rs-infra-tools/conf/defaults.toml`.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SharedDefaults {
-    /// Cargo toolchain used for build commands and audit.
-    build_toolchain: String,
-    /// Cargo toolchain used for Clippy.
-    clippy_toolchain: String,
-    /// Nightly toolchain used for Miri, sanitizers, and fuzz verification.
-    nightly_toolchain: String,
-    /// Exact cargo-fuzz version.
-    fuzz_version: String,
-}
-
-impl SharedDefaults {
-    /// Reads shared settings from the installed project configuration.
-    fn load(project: &Path) -> Result<Self> {
-        let path = project.join(".infra/tools/defaults.toml");
-        let text = std::fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}; run ./update-infra.sh", path.display()))?;
-        toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
-    }
-}
-
 impl Default for LocalConfig {
     /// Uses project-specific defaults until shared versions are loaded.
     fn default() -> Self {
@@ -91,6 +69,20 @@ impl Default for LocalConfig {
 impl LocalConfig {
     /// Reads local options; rejects malformed values and paths outside the
     /// project.
+    ///
+    /// # Parameters
+    ///
+    /// * `project` - Root of the project whose local CI settings should be
+    ///   loaded.
+    ///
+    /// # Returns
+    ///
+    /// Validated project options with the installed tool versions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when configuration cannot be loaded or a value is
+    /// invalid.
     pub(crate) fn load(project: &Path) -> Result<Self> {
         let path = project.join(".infra/ci/ci.toml");
         let document: Option<toml::Value> = if path.exists() {

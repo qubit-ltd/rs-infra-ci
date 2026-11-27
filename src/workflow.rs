@@ -19,8 +19,8 @@ use crate::JobSpec;
 use crate::Task;
 use crate::ToolConfig;
 use crate::config::validate_unique;
+use crate::execution::Execution;
 use crate::local;
-use crate::local::Execution;
 use crate::local_config::LocalConfig;
 
 /// Returns an empty tool specification set because tools are resolved by the

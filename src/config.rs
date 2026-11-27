@@ -79,6 +79,14 @@ impl Config {
 }
 
 /// Rejects duplicate task entries while preserving their original order.
+///
+/// # Parameters
+///
+/// * `tasks` - Ordered CI task selection.
+///
+/// # Errors
+///
+/// Returns an error if a task is selected more than once.
 pub(crate) fn validate_unique(tasks: &[Task]) -> Result<()> {
     for (index, task) in tasks.iter().enumerate() {
         if tasks[..index].contains(task) {

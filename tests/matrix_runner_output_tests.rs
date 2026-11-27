@@ -19,7 +19,7 @@ fuzz_version = "0.13.2"
 "#;
 
 #[test]
-fn matrix_plan_exports_its_dynamic_runner_binary() {
+fn test_matrix_plan_exports_its_dynamic_runner_binary() {
     let project = tempdir().expect("project directory");
     let output = tempdir().expect("output directory");
     let matrix = output.path().join("feature-matrix.json");

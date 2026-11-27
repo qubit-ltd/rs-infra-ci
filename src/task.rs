@@ -136,6 +136,10 @@ impl Task {
 
 impl fmt::Display for Task {
     /// Writes the configuration spelling of this task.
+    ///
+    /// # Parameters
+    ///
+    /// * `formatter` - Destination for the task name.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::Style => "style",

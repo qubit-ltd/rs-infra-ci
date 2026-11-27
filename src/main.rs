@@ -7,71 +7,23 @@
 // =============================================================================
 
 use std::io::Write;
-use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use clap::Subcommand;
 use qubit_infra_ci::Config;
-use qubit_infra_ci::Task;
 use qubit_infra_ci::load_config;
 use qubit_infra_ci::plan_github_matrix;
 use qubit_infra_ci::plan_workflow;
 use qubit_infra_ci::run_matrix_check;
 use qubit_infra_ci::run_with_coverage_policy;
 
-/// Command-line arguments for the CI task orchestrator.
-#[derive(Debug, Parser)]
-#[command(name = "rs-infra-ci", about = "Run the project's reusable CI tasks")]
-struct Cli {
-    /// Project directory whose CI configuration should be used.
-    #[arg(long, default_value = ".")]
-    project: PathBuf,
-    /// Comma-separated tasks to run instead of all configured tasks.
-    #[arg(long, value_delimiter = ',')]
-    only: Vec<Task>,
-    /// Allow coverage threshold shortfalls while still running coverage.
-    #[arg(long)]
-    ignore_coverage_thresholds: bool,
-    /// Operation to perform.
-    #[command(subcommand)]
-    command: Command,
-}
+mod cli;
+mod command;
+mod matrix_command;
 
-/// Supported command-line operations.
-#[derive(Debug, Subcommand)]
-enum Command {
-    /// Print the selected workflow plan.
-    Plan,
-    /// Execute the selected workflow.
-    Check,
-    /// Plan or run one configured Cargo feature check.
-    Matrix {
-        /// Matrix operation to perform.
-        #[command(subcommand)]
-        command: MatrixCommand,
-    },
-}
-
-/// GitHub matrix planning and selected execution operations.
-#[derive(Debug, Subcommand)]
-enum MatrixCommand {
-    /// Validate checks and emit a GitHub Actions matrix as JSON.
-    Plan {
-        /// Write the matrix JSON to a file instead of standard output.
-        #[arg(long)]
-        output: Option<PathBuf>,
-        /// Copy the running, dynamically resolved binary to this path.
-        #[arg(long)]
-        runner_output: Option<PathBuf>,
-    },
-    /// Execute one named, fully validated feature check.
-    Run {
-        /// Name of the matrix check to execute.
-        #[arg(long)]
-        check: String,
-    },
-}
+use crate::cli::Cli;
+use crate::command::Command;
+use crate::matrix_command::MatrixCommand;
 
 /// Parses arguments and executes the requested operation.
 fn main() {
