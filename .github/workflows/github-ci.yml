@@ -59,6 +59,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - &install-sccache
+        name: Install sccache
+        id: sccache
+        if: env.RS_INFRA_SCCACHE != '0'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        continue-on-error: true
+        with:
+          version: v0.20.1
+      - &enable-sccache
+        name: Enable Rust compiler cache
+        if: steps.sccache.outcome == 'success'
+        shell: bash
+        run: |
+          {
+            echo 'SCCACHE_GHA_ENABLED=true'
+            if [[ ! -v RUSTC_WRAPPER && ! -v RUSTC_WORKSPACE_WRAPPER && ! -v CARGO_BUILD_RUSTC_WRAPPER && ! -v CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER ]]; then
+              echo 'RUSTC_WRAPPER=sccache'
+              echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL-0}"
+            fi
+            echo "SCCACHE_IGNORE_SERVER_IO_ERROR=${SCCACHE_IGNORE_SERVER_IO_ERROR-1}"
+          } >> "$GITHUB_ENV"
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -81,6 +102,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -136,6 +159,8 @@ jobs:
       has-checks: ${{ steps.plan.outputs.has-checks }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -190,6 +215,8 @@ jobs:
       matrix: ${{ fromJSON(needs.feature-matrix-plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -228,6 +255,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -289,6 +318,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -320,6 +351,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - name: Validate Pages configuration
@@ -383,6 +416,8 @@ jobs:
       RS_INFRA_FUZZ_MAX_LEN: ${{ inputs.fuzz-max-len }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -470,6 +505,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           submodules: recursive
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - name: Install Rust target
@@ -494,6 +531,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           submodules: recursive
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - name: Install Rust
@@ -513,6 +552,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           submodules: recursive
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - name: Install Rust
@@ -530,6 +571,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           submodules: recursive
+      - *install-sccache
+      - *enable-sccache
       - name: Check centralized infrastructure snapshot
         run: ./update-infra.sh --check
       - name: Install Rust

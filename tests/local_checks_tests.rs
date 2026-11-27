@@ -383,6 +383,71 @@ fn test_matrix_preserves_feature_package_doc_and_clippy_semantics() {
     }
 }
 
+#[test]
+fn test_ci_passes_cache_to_children_and_respects_the_requested_matrix_target() {
+    let dir = fixture("tasks = ['project-hook', 'feature-matrix']\n");
+    script(&dir, "sccache", "#!/bin/sh\necho 'sccache fixture'\n");
+    script(
+        &dir,
+        "cargo",
+        "#!/bin/sh\nprintf '%s|%s|%s\\n' \"$RUSTC_WRAPPER\" \"$CARGO_INCREMENTAL\" \"$CARGO_TARGET_DIR\" >> calls\n",
+    );
+    script(
+        &dir,
+        "project-ci-check.sh",
+        "#!/bin/sh\nCARGO_TARGET_DIR=nested-target cargo test\n",
+    );
+    fs::write(
+        dir.path().join(".infra/ci/cargo-matrix.json"),
+        r#"{"version":1,"checks":[{"name":"minimal","commands":["test"]}]}"#,
+    )
+    .expect("matrix");
+    let project = dir.path().canonicalize().expect("project");
+    let path = format!(
+        "{}:{}",
+        project.display(),
+        std::env::var("PATH").expect("PATH")
+    );
+    let run = |args: &[&str], wrapper: Option<&str>| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rs-infra-ci"));
+        command
+            .args(["--project", project.to_str().expect("project")])
+            .args(args)
+            .env("PATH", &path)
+            .env("CARGO_TARGET_DIR", "chosen-target")
+            .env_remove("RUSTC_WRAPPER")
+            .env_remove("CARGO_BUILD_RUSTC_WRAPPER")
+            .env_remove("CARGO_INCREMENTAL")
+            .env("RS_INFRA_SCCACHE", "1");
+        if let Some(wrapper) = wrapper {
+            command.env("RUSTC_WRAPPER", wrapper);
+        }
+        let output = command.output().expect("CLI");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output
+    };
+    let output = run(&["check"], None);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("feature-matrix: completed in"));
+    run(
+        &["matrix", "run", "--check", "minimal"],
+        Some("caller-wrapper"),
+    );
+    let calls = fs::read_to_string(project.join("calls")).expect("calls");
+    let matrix_target = project.join("chosen-target/infra-feature-matrix");
+    assert_eq!(
+        calls.lines().collect::<Vec<_>>(),
+        [
+            "sccache|0|nested-target".to_string(),
+            format!("sccache|0|{}", matrix_target.display()),
+            format!("caller-wrapper||{}", matrix_target.display()),
+        ]
+    );
+}
+
 fn matrix_with_full_clippy() -> TempDir {
     let dir = fixture("tasks = ['feature-matrix', 'clippy']\n");
     fs::write(dir.path().join(".infra/ci/cargo-matrix.json"), r#"{"version":1,"checks":[{"name":"minimal","commands":["check","clippy"],"defaultFeatures":false,"features":["regex"]},{"name":"all","commands":["test","clippy"],"allFeatures":true}]}"#).expect("matrix");

@@ -21,6 +21,7 @@ use serde_json::json;
 use crate::CommandSpec;
 use crate::Task;
 use crate::local;
+use crate::local::Execution;
 use crate::local_config::LocalConfig;
 
 /// Reads and validates the complete matrix before any command can mutate the
@@ -209,7 +210,10 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
         }
         result.push(spec);
     }
-    let target = project.join("target/infra-feature-matrix");
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .filter(|target| !target.is_empty())
+        .map_or_else(|| project.join("target"), |target| project.join(target))
+        .join("infra-feature-matrix");
     for command in &mut result {
         command
             .env
@@ -257,19 +261,17 @@ pub(crate) fn github_plan(project: &Path, config: &LocalConfig) -> Result<Value>
 /// Runs matrix checks sequentially, restoring the entry lockfile even on
 /// command failure. Dependency metadata must resolve exactly one matching
 /// version before tests start.
-pub(crate) fn run(project: &Path, config: &LocalConfig) -> Result<()> {
-    run_selected(project, config, None)
-}
-
-/// Runs one named check after validating the entire matrix configuration.
-///
-/// Returns an error when the name is absent or any matrix entry is invalid.
-pub(crate) fn run_one(project: &Path, config: &LocalConfig, name: &str) -> Result<()> {
-    run_selected(project, config, Some(name))
+pub(crate) fn run(project: &Path, config: &LocalConfig, execution: &Execution) -> Result<()> {
+    run_selected(project, config, None, execution)
 }
 
 /// Executes all checks or one selected check with the same lockfile handling.
-fn run_selected(project: &Path, config: &LocalConfig, name: Option<&str>) -> Result<()> {
+fn run_selected(
+    project: &Path,
+    config: &LocalConfig,
+    name: Option<&str>,
+    execution: &Execution,
+) -> Result<()> {
     let mut checks = checks(project, config)?;
     if let Some(name) = name {
         let check = checks
@@ -295,7 +297,7 @@ fn run_selected(project: &Path, config: &LocalConfig, name: Option<&str>) -> Res
                         .find(|arg| !arg.starts_with('+'))
                         .is_some_and(|arg| arg == "metadata")
                 {
-                    let output = local::process(project, &command)
+                    let output = local::process(project, &command, execution)
                         .output()
                         .context("matrix dependency metadata")?;
                     if !output.status.success() {
@@ -317,7 +319,7 @@ fn run_selected(project: &Path, config: &LocalConfig, name: Option<&str>) -> Res
                         bail!("matrix dependency resolved an unexpected version: {versions:?}");
                     }
                 } else {
-                    local::execute(project, &command)?;
+                    local::execute(project, &command, execution)?;
                 }
             }
             Ok(())
@@ -355,5 +357,10 @@ pub fn plan_github_matrix(project: &Path) -> Result<Value> {
 pub fn run_matrix_check(project: &Path, name: &str) -> Result<()> {
     let project = project.canonicalize().context("invalid project directory")?;
     let config = LocalConfig::load(&project)?;
-    run_one(&project, &config, name)
+    let execution = Execution::new(&project);
+    let start = std::time::Instant::now();
+    let result = run_selected(&project, &config, Some(name), &execution);
+    local::report_duration(name, start, &result);
+    execution.report();
+    result
 }

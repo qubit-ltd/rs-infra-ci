@@ -20,6 +20,7 @@ use crate::Task;
 use crate::ToolConfig;
 use crate::config::validate_unique;
 use crate::local;
+use crate::local::Execution;
 use crate::local_config::LocalConfig;
 
 /// Returns an empty tool specification set because tools are resolved by the
@@ -282,33 +283,43 @@ pub fn run_with_coverage_policy(project: &Path, tasks: Vec<Task>, enforce_thresh
     let config = LocalConfig::load(&project)?;
     let bin_dir = std::env::var_os("RS_INFRA_BIN_DIR").map(PathBuf::from);
     let jobs = workflow(&project, &tasks)?;
-    for job in jobs {
-        if job.commands.is_empty() {
-            println!("{}: not configured; skipping", job.name);
-            continue;
-        }
-        if job.task == Task::FeatureMatrix {
-            crate::matrix::run(&project, &config)?;
-            continue;
-        }
-        if job.task == Task::Fuzz {
-            local::ensure_fuzz(&project, &config)?;
-        }
-        for mut spec in job.commands {
-            if job.task == Task::Coverage && !enforce_thresholds {
-                spec.args.push("--ignore-thresholds".into());
+    let execution = Execution::new(&project);
+    let result = (|| {
+        for job in jobs {
+            if job.commands.is_empty() {
+                println!("{}: not configured; skipping", job.name);
+                continue;
             }
-            if spec.executable.starts_with("rs-infra-")
-                && let Some(dir) = &bin_dir
-            {
-                spec.executable = dir.join(&spec.executable).to_string_lossy().into_owned();
-            }
-            if job.task == Task::Audit {
-                local::audit(&project, &spec, &config)?;
-            } else {
-                local::execute(&project, &spec)?;
-            }
+            let start = std::time::Instant::now();
+            let result = (|| {
+                if job.task == Task::FeatureMatrix {
+                    return crate::matrix::run(&project, &config, &execution);
+                }
+                if job.task == Task::Fuzz {
+                    local::ensure_fuzz(&project, &config, &execution)?;
+                }
+                for mut spec in job.commands {
+                    if job.task == Task::Coverage && !enforce_thresholds {
+                        spec.args.push("--ignore-thresholds".into());
+                    }
+                    if spec.executable.starts_with("rs-infra-")
+                        && let Some(dir) = &bin_dir
+                    {
+                        spec.executable = dir.join(&spec.executable).to_string_lossy().into_owned();
+                    }
+                    if job.task == Task::Audit {
+                        local::audit(&project, &spec, &config, &execution)?;
+                    } else {
+                        local::execute(&project, &spec, &execution)?;
+                    }
+                }
+                Ok(())
+            })();
+            local::report_duration(&job.name, start, &result);
+            result?;
         }
-    }
-    Ok(())
+        Ok(())
+    })();
+    execution.report();
+    result
 }
