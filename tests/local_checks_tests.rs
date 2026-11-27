@@ -385,7 +385,7 @@ fn test_matrix_preserves_feature_package_doc_and_clippy_semantics() {
 
 #[test]
 fn test_ci_passes_cache_to_children_and_respects_the_requested_matrix_target() {
-    let dir = fixture("tasks = ['project-hook', 'feature-matrix']\n");
+    let dir = fixture("tasks = ['project-hook', 'feature-matrix', 'coverage']\n");
     script(&dir, "sccache", "#!/bin/sh\necho 'sccache fixture'\n");
     script(
         &dir,
@@ -396,6 +396,11 @@ fn test_ci_passes_cache_to_children_and_respects_the_requested_matrix_target() {
         &dir,
         "project-ci-check.sh",
         "#!/bin/sh\nCARGO_TARGET_DIR=nested-target cargo test\n",
+    );
+    script(
+        &dir,
+        "rs-infra-coverage",
+        "#!/bin/sh\ntest \"$RUSTC_WRAPPER\" = sccache && test \"$CARGO_INCREMENTAL\" = 1 && test \"$SCCACHE_ALLOW_INCREMENTAL\" = 1\n",
     );
     fs::write(
         dir.path().join(".infra/ci/cargo-matrix.json"),
@@ -418,6 +423,8 @@ fn test_ci_passes_cache_to_children_and_respects_the_requested_matrix_target() {
             .env_remove("RUSTC_WRAPPER")
             .env_remove("CARGO_BUILD_RUSTC_WRAPPER")
             .env_remove("CARGO_INCREMENTAL")
+            .env_remove("SCCACHE_ALLOW_INCREMENTAL")
+            .env_remove("RS_INFRA_BIN_DIR")
             .env("RS_INFRA_SCCACHE", "1");
         if let Some(wrapper) = wrapper {
             command.env("RUSTC_WRAPPER", wrapper);

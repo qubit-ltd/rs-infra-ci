@@ -289,10 +289,12 @@ impl Execution {
             {
                 command.env("CARGO_INCREMENTAL", "0");
             }
-            if std::env::var_os("SCCACHE_IGNORE_SERVER_IO_ERROR").is_none()
-                && !spec.env.contains_key("SCCACHE_IGNORE_SERVER_IO_ERROR")
-            {
-                command.env("SCCACHE_IGNORE_SERVER_IO_ERROR", "1");
+            // Coverage uses incremental compilation. Let sccache pass those
+            // invocations through to rustc while caching normal builds.
+            for setting in ["SCCACHE_ALLOW_INCREMENTAL", "SCCACHE_IGNORE_SERVER_IO_ERROR"] {
+                if std::env::var_os(setting).is_none() && !spec.env.contains_key(setting) {
+                    command.env(setting, "1");
+                }
             }
         }
     }

@@ -77,6 +77,7 @@ jobs:
             if [[ ! -v RUSTC_WRAPPER && ! -v RUSTC_WORKSPACE_WRAPPER && ! -v CARGO_BUILD_RUSTC_WRAPPER && ! -v CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER ]]; then
               echo 'RUSTC_WRAPPER=sccache'
               echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL-0}"
+              echo "SCCACHE_ALLOW_INCREMENTAL=${SCCACHE_ALLOW_INCREMENTAL-1}"
             fi
             echo "SCCACHE_IGNORE_SERVER_IO_ERROR=${SCCACHE_IGNORE_SERVER_IO_ERROR-1}"
           } >> "$GITHUB_ENV"
