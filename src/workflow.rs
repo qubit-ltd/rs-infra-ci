@@ -283,7 +283,7 @@ pub fn run_with_coverage_policy(project: &Path, tasks: Vec<Task>, enforce_thresh
     let config = LocalConfig::load(&project)?;
     let bin_dir = std::env::var_os("RS_INFRA_BIN_DIR").map(PathBuf::from);
     let jobs = workflow(&project, &tasks)?;
-    let execution = Execution::new(&project);
+    let mut execution = Execution::new(&project)?;
     let result = (|| {
         for job in jobs {
             if job.commands.is_empty() {
@@ -320,6 +320,12 @@ pub fn run_with_coverage_policy(project: &Path, tasks: Vec<Task>, enforce_thresh
         }
         Ok(())
     })();
+    let cleanup = execution.cleanup();
     execution.report();
-    result
+    match (result, cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+        (Err(error), Err(cleanup_error)) => Err(error.context(format!("Cargo target cleanup also failed: {cleanup_error:#}"))),
+    }
 }

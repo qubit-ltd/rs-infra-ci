@@ -11,13 +11,26 @@
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::Context;
+use anyhow::Result;
+use anyhow::bail;
+use serde_json::Value;
+use serde_json::from_slice;
 
 use crate::CommandSpec;
+
+static EXECUTION_NONCE: AtomicU64 = AtomicU64::new(0);
 
 /// Compiler cache settings shared by every command in one CI invocation.
 pub(crate) struct Execution {
     /// Whether this invocation configured sccache.
     compiler_cache: bool,
+    target_parent: PathBuf,
+    target_directory: PathBuf,
+    cleaned: bool,
 }
 
 impl Execution {
@@ -30,7 +43,7 @@ impl Execution {
     /// # Returns
     ///
     /// The compiler cache settings for this invocation.
-    pub(crate) fn new(project: &Path) -> Self {
+    pub(crate) fn new(project: &Path) -> Result<Self> {
         let compiler_cache = if std::env::var_os("RS_INFRA_SCCACHE").is_some_and(|value| value == "0") {
             eprintln!("rs-infra-ci: sccache disabled");
             false
@@ -49,7 +62,17 @@ impl Execution {
             }
             available
         };
-        Self { compiler_cache }
+        let target_parent = cargo_target_directory(project)?.join("rs-infra-ci");
+        std::fs::create_dir_all(&target_parent)
+            .with_context(|| format!("failed to create Cargo target parent {}", target_parent.display()))?;
+        let target_parent = target_parent.canonicalize()
+            .with_context(|| format!("failed to resolve Cargo target parent {}", target_parent.display()))?;
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let nonce = EXECUTION_NONCE.fetch_add(1, Ordering::Relaxed);
+        let target_directory = target_parent.join(format!("run-{}-{timestamp}-{nonce}", std::process::id()));
+        std::fs::create_dir(&target_directory)
+            .with_context(|| format!("failed to create Cargo target {}", target_directory.display()))?;
+        Ok(Self { compiler_cache, target_parent, target_directory, cleaned: false })
     }
 
     /// Applies cache settings to the child and its descendants.
@@ -59,6 +82,7 @@ impl Execution {
     /// * `command` - Child process to configure.
     /// * `spec` - Per-command environment overrides.
     pub(crate) fn apply(&self, command: &mut Command, spec: &CommandSpec) {
+        command.env("CARGO_TARGET_DIR", &self.target_directory);
         if self.compiler_cache {
             command.env("RUSTC_WRAPPER", "sccache");
             if std::env::var_os("CARGO_INCREMENTAL").is_none() && !spec.env.contains_key("CARGO_INCREMENTAL") {
@@ -84,6 +108,65 @@ impl Execution {
             eprint!("{}", String::from_utf8_lossy(&output.stdout));
         }
     }
+
+    pub(crate) fn target_directory(&self) -> &Path {
+        &self.target_directory
+    }
+
+    pub(crate) fn cleanup(&mut self) -> Result<()> {
+        if self.target_directory.parent() != Some(self.target_parent.as_path())
+            || !self.target_directory.file_name().is_some_and(|name| name.to_string_lossy().starts_with("run-"))
+        {
+            bail!("refusing to clean unexpected Cargo target {}", self.target_directory.display());
+        }
+        std::fs::remove_dir_all(&self.target_directory)
+            .with_context(|| format!("unable to clean Cargo target {}", self.target_directory.display()))?;
+        self.cleaned = true;
+        Ok(())
+    }
+}
+
+impl Drop for Execution {
+    fn drop(&mut self) {
+        if self.cleaned {
+            return;
+        }
+        if self.target_directory.parent() != Some(self.target_parent.as_path())
+            || !self.target_directory.file_name().is_some_and(|name| name.to_string_lossy().starts_with("run-"))
+        {
+            eprintln!("rs-infra-ci: refusing to clean unexpected Cargo target {}", self.target_directory.display());
+            return;
+        }
+        if let Err(error) = std::fs::remove_dir_all(&self.target_directory)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!("rs-infra-ci: unable to clean Cargo target {}: {error}", self.target_directory.display());
+        }
+    }
+}
+
+pub(crate) fn cargo_target_directory(project: &Path) -> Result<PathBuf> {
+    let manifest = project.join("Cargo.toml");
+    let output = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1", "--manifest-path"])
+        .arg(&manifest)
+        .current_dir(project)
+        .output()
+        .with_context(|| format!("failed to run cargo metadata for {}", manifest.display()))?;
+    if !output.status.success() {
+        bail!(
+            "cargo metadata failed for {}: {}",
+            manifest.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let metadata: Value = from_slice(&output.stdout).context("invalid cargo metadata JSON")?;
+    let target = metadata["target_directory"].as_str().context("cargo metadata omitted target_directory")?;
+    let target = PathBuf::from(target);
+    if !target.is_absolute() {
+        bail!("cargo metadata returned a relative target_directory: {}", target.display());
+    }
+    Ok(target)
 }
 
 /// Checks Cargo's environment and project configuration layers for wrappers.

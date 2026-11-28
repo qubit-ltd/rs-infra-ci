@@ -20,7 +20,7 @@ use serde_json::json;
 
 use crate::CommandSpec;
 use crate::Task;
-use crate::execution::Execution;
+use crate::execution::{Execution, cargo_target_directory};
 use crate::local;
 use crate::local_config::LocalConfig;
 
@@ -173,7 +173,7 @@ fn full_clippy_enabled(project: &Path) -> Result<bool> {
 /// * `project` - Project directory for Cargo.
 /// * `config` - Local CI configuration.
 /// * `check` - Validated JSON matrix entry.
-fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<CommandSpec>> {
+fn commands(project: &Path, config: &LocalConfig, check: &Value, target: &Path) -> Result<Vec<CommandSpec>> {
     let skip_clippy = full_clippy_enabled(project)?;
     let mut result = Vec::new();
     if let Some(dependency) = check.get("dependency") {
@@ -241,10 +241,6 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
         }
         result.push(spec);
     }
-    let target = std::env::var_os("CARGO_TARGET_DIR")
-        .filter(|target| !target.is_empty())
-        .map_or_else(|| project.join("target"), |target| project.join(target))
-        .join("infra-feature-matrix");
     for command in &mut result {
         command
             .env
@@ -260,9 +256,10 @@ fn commands(project: &Path, config: &LocalConfig, check: &Value) -> Result<Vec<C
 /// * `project` - Project directory for the matrix.
 /// * `config` - Local CI configuration.
 pub(crate) fn plan(project: &Path, config: &LocalConfig) -> Result<Vec<CommandSpec>> {
+    let target = cargo_target_directory(project)?.join("infra-feature-matrix");
     checks(project, config)?
         .iter()
-        .map(|check| commands(project, config, check))
+        .map(|check| commands(project, config, check, &target))
         .collect::<Result<Vec<_>>>()
         .map(|groups| groups.into_iter().flatten().collect())
 }
@@ -329,63 +326,69 @@ fn run_selected(project: &Path, config: &LocalConfig, name: Option<&str>, execut
             .with_context(|| format!("unknown matrix check: {name}"))?;
         checks = vec![check];
     }
-    let lock = project.join("Cargo.lock");
-    let baseline = match std::fs::read(&lock) {
-        Ok(bytes) => Some(bytes),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error.into()),
-    };
-    for check in checks {
-        let dependency = check.get("dependency");
-        let result = (|| {
-            for command in commands(project, config, &check)? {
-                if dependency.is_some()
-                    && command
-                        .args
-                        .iter()
-                        .find(|arg| !arg.starts_with('+'))
-                        .is_some_and(|arg| arg == "metadata")
-                {
-                    let output = local::process(project, &command, execution)
-                        .output()
-                        .context("matrix dependency metadata")?;
-                    if !output.status.success() {
-                        bail!("matrix metadata failed: {}", String::from_utf8_lossy(&output.stderr));
-                    }
-                    let metadata: Value = from_slice(&output.stdout)?;
-                    let dependency = dependency.context("dependency configuration")?;
-                    let versions: BTreeSet<_> = metadata["packages"]
-                        .as_array()
-                        .context("metadata packages")?
-                        .iter()
-                        .filter(|package| package["name"] == dependency["name"])
-                        .filter_map(|package| package["version"].as_str())
-                        .collect();
-                    if versions.len() != 1
-                        || (dependency["resolution"] == "precise"
-                            && !versions.contains(dependency["version"].as_str().context("dependency version")?))
+    let target = execution.target_directory().join("infra-feature-matrix");
+    std::fs::create_dir_all(&target)
+        .with_context(|| format!("failed to create matrix target {}", target.display()))?;
+    let result = (|| -> Result<()> {
+        let lock = project.join("Cargo.lock");
+        let baseline = match std::fs::read(&lock) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        for check in checks {
+            let dependency = check.get("dependency");
+            let result = (|| {
+                for command in commands(project, config, &check, &target)? {
+                    if dependency.is_some()
+                        && command
+                            .args
+                            .iter()
+                            .find(|arg| !arg.starts_with('+'))
+                            .is_some_and(|arg| arg == "metadata")
                     {
-                        bail!("matrix dependency resolved an unexpected version: {versions:?}");
+                        let output = local::process(project, &command, execution)
+                            .output()
+                            .context("matrix dependency metadata")?;
+                        if !output.status.success() {
+                            bail!("matrix metadata failed: {}", String::from_utf8_lossy(&output.stderr));
+                        }
+                        let metadata: Value = from_slice(&output.stdout)?;
+                        let dependency = dependency.context("dependency configuration")?;
+                        let versions: BTreeSet<_> = metadata["packages"]
+                            .as_array()
+                            .context("metadata packages")?
+                            .iter()
+                            .filter(|package| package["name"] == dependency["name"])
+                            .filter_map(|package| package["version"].as_str())
+                            .collect();
+                        if versions.len() != 1
+                            || (dependency["resolution"] == "precise"
+                                && !versions.contains(dependency["version"].as_str().context("dependency version")?))
+                        {
+                            bail!("matrix dependency resolved an unexpected version: {versions:?}");
+                        }
+                    } else {
+                        local::execute(project, &command, execution)?;
                     }
-                } else {
-                    local::execute(project, &command, execution)?;
                 }
+                Ok(())
+            })();
+            if dependency.is_some() {
+                let restored = match &baseline {
+                    Some(bytes) => std::fs::write(&lock, bytes),
+                    None => match std::fs::remove_file(&lock) {
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                        result => result,
+                    },
+                };
+                restored.with_context(|| format!("failed to restore {}; matrix result: {result:?}", lock.display()))?;
             }
-            Ok(())
-        })();
-        if dependency.is_some() {
-            let restored = match &baseline {
-                Some(bytes) => std::fs::write(&lock, bytes),
-                None => match std::fs::remove_file(&lock) {
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                    result => result,
-                },
-            };
-            restored.with_context(|| format!("failed to restore {}; matrix result: {result:?}", lock.display()))?;
+            result?;
         }
-        result?;
-    }
-    Ok(())
+        Ok(())
+    })();
+    result
 }
 
 /// Plans the project's validated feature checks as a GitHub Actions matrix.
@@ -415,10 +418,16 @@ pub fn plan_github_matrix(project: &Path) -> Result<Value> {
 pub fn run_matrix_check(project: &Path, name: &str) -> Result<()> {
     let project = project.canonicalize().context("invalid project directory")?;
     let config = LocalConfig::load(&project)?;
-    let execution = Execution::new(&project);
+    let mut execution = Execution::new(&project)?;
     let start = std::time::Instant::now();
     let result = run_selected(&project, &config, Some(name), &execution);
     local::report_duration(name, start, &result);
+    let cleanup = execution.cleanup();
     execution.report();
-    result
+    match (result, cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+        (Err(error), Err(cleanup_error)) => Err(error.context(format!("Cargo target cleanup also failed: {cleanup_error:#}"))),
+    }
 }
