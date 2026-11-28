@@ -235,3 +235,21 @@ Contributions are welcome. Please follow the Rust API guidelines, keep public AP
 **Haixing Hu** - *Qubit Co. Ltd.*
 
 Repository: [https://github.com/qubit-ltd/rs-infra-ci](https://github.com/qubit-ltd/rs-infra-ci)
+
+## Shared GitHub workflow platforms
+
+Consumers reference `qubit-ltd/rs-infra-ci/.github/workflows/github-ci.yml@main`.
+Regular verification defaults to `verify-os: '["ubuntu-latest"]'`; Windows and
+macOS regular tests require an explicit runner list. A separate Ubuntu planning
+job inspects workspace package metadata and optional configuration before
+allocating advanced-suite runners. Unconfigured suites create no execution jobs.
+Miri requires `miri = true` and AddressSanitizer requires `sanitizers = ["address"]`
+in `[package.metadata.rs-infra]` (legacy `rs-ci` is supported; modern metadata
+wins). Only workspace members opt in; transitive dependencies do not.
+Enabled memory checks default to Ubuntu. To opt into macOS as well, set
+`memory-check-os: '["ubuntu-latest", "macos-26", "macos-26-intel"]'` in the calling
+job's `with` inputs. This input is independent of `verify-os` and accepts only
+Ubuntu/macOS runner labels. Audit remains enabled on Ubuntu by default.
+
+New runs and full reruns resolve `@main` again. Rerunning only failed jobs or a
+specific job retains the reusable workflow SHA from the first attempt.

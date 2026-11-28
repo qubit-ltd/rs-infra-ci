@@ -213,3 +213,18 @@ Pull Request 前运行 `./align-ci.sh`格式化代码，运行`./ci-check.sh`对
 **Haixing Hu** - *Qubit Co. Ltd.*
 
 仓库地址：[https://github.com/qubit-ltd/rs-infra-ci](https://github.com/qubit-ltd/rs-infra-ci)
+
+## 共享 GitHub 工作流的平台选择
+
+下游统一引用 `qubit-ltd/rs-infra-ci/.github/workflows/github-ci.yml@main`。
+普通验证默认使用 `verify-os: '["ubuntu-latest"]'`；Windows、macOS 普通测试需要显式指定 runner 列表。
+独立的 Ubuntu 规划任务会先读取 workspace package metadata 和可选配置，再分配高级验证 runner；
+未配置的 suite 不创建执行任务。
+Miri 必须通过 `[package.metadata.rs-infra]` 中的 `miri = true` 启用，
+AddressSanitizer 必须通过 `sanitizers = ["address"]` 启用。
+兼容旧 `rs-ci` metadata，新配置优先；仅 workspace 成员参与判断，传递依赖不启用检查。
+启用后的内存检查默认只使用 Ubuntu。如需增加 macOS，在调用任务的 `with` 中设置
+`memory-check-os: '["ubuntu-latest", "macos-26", "macos-26-intel"]'`。
+该输入独立于 `verify-os`，仅接受 Ubuntu/macOS runner 标签。Audit 仍默认在 Ubuntu 上启用。
+
+新运行及完整重跑会重新解析 `@main`；只重跑失败任务或单个任务会沿用首次运行的共享工作流 SHA。
